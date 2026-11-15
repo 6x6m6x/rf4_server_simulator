@@ -203,6 +203,12 @@ func TestReelPartSnapshotWorkshop(t *testing.T) {
 				for _, fn := range c.afterResponse {
 					fn()
 				}
+				// PR467 起工坊换件按「4/21 移除 + 4/22 重加」两步推送，
+				// 与手道具切换、仓库转移的既有惯例一致。
+				removed := awaitPushEnvelope(t, peer)
+				if removed.Main != 4 || removed.Sub != 21 {
+					t.Fatalf("first push %d/%d, want 4/21", removed.Main, removed.Sub)
+				}
 				push := awaitPushEnvelope(t, peer)
 				if push.Main != 4 || push.Sub != 22 {
 					t.Fatalf("wrong push %d/%d", push.Main, push.Sub)
@@ -514,6 +520,11 @@ func TestReelPartSnapshotBatchAndUnrelatedParts(t *testing.T) {
 				t.Fatal("batch refresh missing")
 			}
 			c.afterResponse[0]()
+			// 同 TestReelPartSnapshotWorkshop：先 4/21 移除，再 4/22 重加。
+			removed := awaitPushEnvelope(t, peer)
+			if removed.Main != 4 || removed.Sub != 21 {
+				t.Fatalf("first push %d/%d, want 4/21", removed.Main, removed.Sub)
+			}
 			push := awaitPushEnvelope(t, peer)
 			if push.Main != 4 || push.Sub != 22 {
 				t.Fatal("wrong refresh command")
