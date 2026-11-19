@@ -301,7 +301,10 @@ func TestBrokenRodPersistsZeroDurabilityAndCannotMount(t *testing.T) {
 }
 
 func TestWearAddsHistoryAndWearsRodBody(t *testing.T) {
-	t.Parallel()
+	prevNoWear := noWearAll
+	noWearAll = false
+	defer func() { noWearAll = prevNoWear }() // 用户补丁：本用例锁定旧磨损行为，临时恢复上游磨损
+
 	srv, db := newRigTestServer(t)
 	ctx := context.Background()
 	const uid = int64(1000001)
@@ -322,8 +325,9 @@ func TestWearAddsHistoryAndWearsRodBody(t *testing.T) {
 	if freshRod.Durability >= 1 {
 		t.Fatalf("竿本体应产生磨损，耐久=%v", freshRod.Durability)
 	}
-	if freshLine.Durability >= 1 {
-		t.Fatalf("鱼线应产生磨损，耐久=%v", freshLine.Durability)
+	// 用户补丁：鱼线不磨损，竿本体仍照常磨损。
+	if freshLine.Durability != 1 {
+		t.Fatalf("用户补丁：鱼线应不磨损，耐久=%v", freshLine.Durability)
 	}
 	logs, err := db.ListItemDamageLogs(ctx, uid, 20)
 	if err != nil {
@@ -335,8 +339,8 @@ func TestWearAddsHistoryAndWearsRodBody(t *testing.T) {
 			got[entry.ItemGUID] = true
 		}
 	}
-	if !got[rod.GUID] || !got[line.GUID] {
-		t.Fatalf("磨损历史缺少竿或线: %+v", got)
+	if !got[rod.GUID] || got[line.GUID] {
+		t.Fatalf("用户补丁：应只有竿产生磨损历史: %+v", got)
 	}
 }
 

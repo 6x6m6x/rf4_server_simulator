@@ -65,7 +65,7 @@ func (s *Server) prepareCatchWear(ctx context.Context, uid int64, rigGUID string
 		if row != nil && row.UID != uid {
 			return fmt.Errorf("钓组物品不属于当前玩家")
 		}
-		amount := wearPerCatch[key]
+		amount := noWearAmount(key, wearPerCatch[key]) // 用户补丁：目标类别不磨损
 		if row == nil || amount <= 0 || row.Durability <= 0 {
 			return nil
 		}

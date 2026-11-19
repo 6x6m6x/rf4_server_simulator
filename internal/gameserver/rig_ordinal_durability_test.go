@@ -228,18 +228,19 @@ func TestWearPersistsColumnFieldsAndVersion(t *testing.T) {
 
 	lineAfter, _ := db.GetItemByGUID(ctx, line.GUID)
 	hookAfter, _ := db.GetItemByGUID(ctx, hook.GUID)
-	if math.Abs(lineAfter.Durability-(lineBefore.Durability-wearPerCatch["line"])) > 1e-9 {
-		t.Fatalf("鱼线列耐久磨损错误: %v -> %v", lineBefore.Durability, lineAfter.Durability)
+	// 用户补丁：鱼线/鱼钩不磨损，列与字段都应保持原值。
+	if math.Abs(lineAfter.Durability-lineBefore.Durability) > 1e-9 {
+		t.Fatalf("用户补丁：鱼线列耐久应不变: %v -> %v", lineBefore.Durability, lineAfter.Durability)
 	}
-	if math.Abs(hookAfter.Durability-(hookBefore.Durability-wearPerCatch["hook"])) > 1e-9 {
-		t.Fatalf("鱼钩列耐久磨损错误: %v -> %v", hookBefore.Durability, hookAfter.Durability)
+	if math.Abs(hookAfter.Durability-hookBefore.Durability) > 1e-9 {
+		t.Fatalf("用户补丁：鱼钩列耐久应不变: %v -> %v", hookBefore.Durability, hookAfter.Durability)
 	}
 	lineFieldsAfter, _ := FieldsFromJSON(lineAfter.FieldsJSON)
 	gotD := rigTestFieldFloat(t, lineFieldsAfter[fieldIdxByCS(lineAfter.WireClass, csDurability)])
 	if math.Abs(gotD-lineAfter.Durability) > 1e-6 {
 		t.Fatalf("fields_json 耐久未同步: column=%v field=%v", lineAfter.Durability, gotD)
 	}
-	if gotVer := u64Of(lineFieldsAfter[lineVerIdx].Num); gotVer <= lineVerBefore {
-		t.Fatalf("磨损后版本戳应严格递增: %d -> %d", lineVerBefore, gotVer)
+	if gotVer := u64Of(lineFieldsAfter[lineVerIdx].Num); gotVer != lineVerBefore {
+		t.Fatalf("用户补丁：不磨损时版本戳应不变: %d -> %d", lineVerBefore, gotVer)
 	}
 }

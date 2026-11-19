@@ -51,6 +51,10 @@ func TestCatchSkillFloatResidueHidesSkillRow(t *testing.T) {
 }
 
 func TestCatchSettlementOnceAcrossCallsAndRestart(t *testing.T) {
+	prevNoWear := noWearAll
+	noWearAll = false
+	defer func() { noWearAll = prevNoWear }() // 用户补丁：本用例锁定旧磨损行为，临时恢复上游磨损
+
 	srv, db := newDetachTestServer(t)
 	ctx := context.Background()
 	const uid = int64(1000001)

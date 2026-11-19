@@ -632,6 +632,10 @@ func (s *Server) consumeBaitEvent(ctx context.Context, uid int64, rod, event str
 			return out, err
 		}
 		consumed, wear := baitUseRule(def, cast)
+		if def != nil {
+			// 用户补丁：目标类别只保留数量消耗，关闭耐久磨损。
+			consumed, wear = noWearBaitWear(consumed, wear, def.Category)
+		}
 		if consumed && baitQuantity(row) <= 0 {
 			return out, fmt.Errorf("挂载饵料已用尽")
 		}

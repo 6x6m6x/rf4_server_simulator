@@ -34,6 +34,9 @@ const (
 )
 
 func (s *Server) hookNibbleEnabled() bool {
+	if hookRejectDisabled { // 用户补丁：彻底关闭脱钩
+		return false
+	}
 	return s != nil && s.tunableF(tunableHookNibbleEnabled, 0) != 0
 }
 
@@ -576,6 +579,9 @@ func (s *Server) applyHookBiteQuality(f *RolledFish, spec gearPhysicsSpec) {
 }
 
 func hookRetentionFails(f *RolledFish) bool {
+	if hookRejectDisabled { // 用户补丁：彻底关闭脱钩
+		return false
+	}
 	return f != nil && !f.LuckProtected && f.BiteQuality == "solid" &&
 		f.HookHoldP > 0 && rand.Float64() > f.HookHoldP
 }

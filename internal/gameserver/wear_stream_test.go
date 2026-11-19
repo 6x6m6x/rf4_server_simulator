@@ -13,6 +13,10 @@ import (
 // TestFightWearComponentTreesPassContractWhitelist 用真实电轮+竿+前导装配验证：
 // 受力落库后收集到的裸部件子树全部命中 itemTypeIDs 白名单。
 func TestFightWearComponentTreesPassContractWhitelist(t *testing.T) {
+	prevNoWear := noWearAll
+	noWearAll = false
+	defer func() { noWearAll = prevNoWear }() // 用户补丁：本用例锁定旧磨损行为，临时恢复上游磨损
+
 	srv, db := newRigTestServer(t)
 	ctx := context.Background()
 	const uid = int64(1000001)

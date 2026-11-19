@@ -188,7 +188,7 @@ func TestBaitConsumptionReusableAndAllStaticTypes(t *testing.T) {
 	for _, tt := range []struct {
 		id   string
 		wear float64
-	}{{"zbb_mm_bg_13", 0.005}, {"softplastic_2627", 0.02}, {"spinnerbaits_1244", 0}} {
+	}{{"zbb_mm_bg_13", 0}, {"softplastic_2627", 0}, {"spinnerbaits_1244", 0}} { // 用户补丁：仿生饵/拟饵不磨损
 		rod := baitTestRod(t, s)
 		_, child := baitTestMount(t, s, rod, tt.id, 3, 350)
 		before, _ := db.GetItemByGUID(t.Context(), child)
