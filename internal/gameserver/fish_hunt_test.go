@@ -395,6 +395,8 @@ func TestUnhookedTrophyUnknownFrameDoesNotGrantEscapeCompensation(t *testing.T) 
 }
 
 func TestNibbleDoesNotEnterHookedState(t *testing.T) {
+	hookRejectDisabled = false // 用户补丁：本测试验证原否决机制，临时打开
+	defer func() { hookRejectDisabled = true }()
 	s, _ := newRigTestServer(t)
 	setWeatherTestTunable(t, s, tunableHookNibbleEnabled, "1")
 	sess, _ := newTunnelProbe(t, s)
@@ -478,6 +480,8 @@ func TestDuplicateHookedConfirmationIsIdempotent(t *testing.T) {
 }
 
 func TestMarineNibbleDoesNotEnterHookedState(t *testing.T) {
+	hookRejectDisabled = false // 用户补丁：本测试验证原否决机制，临时打开
+	defer func() { hookRejectDisabled = true }()
 	s, _ := newRigTestServer(t)
 	setWeatherTestTunable(t, s, tunableHookNibbleEnabled, "1")
 	sess, _ := newTunnelProbe(t, s)
@@ -505,6 +509,8 @@ func TestMarineNibbleDoesNotEnterHookedState(t *testing.T) {
 // 当"鱼离场"，鱼走自然脱钩状态机游走）。否则客户端会蒙在
 // 鼓里继续搏鱼，拖到岸边收竿 14/4 落空，鱼凭空消失（2026-11-08 23:24/23:26 实证）。
 func TestNibbleVetoPushesFishLeave(t *testing.T) {
+	hookRejectDisabled = false // 用户补丁：本测试验证原否决机制，临时打开
+	defer func() { hookRejectDisabled = true }()
 	s, _ := newRigTestServer(t)
 	setWeatherTestTunable(t, s, tunableHookNibbleEnabled, "1")
 	sess, gc := newTunnelProbe(t, s)
@@ -545,6 +551,8 @@ func TestNibbleVetoPushesFishLeave(t *testing.T) {
 }
 
 func TestMarineNibbleVetoPushesFishLeave(t *testing.T) {
+	hookRejectDisabled = false // 用户补丁：本测试验证原否决机制，临时打开
+	defer func() { hookRejectDisabled = true }()
 	s, _ := newRigTestServer(t)
 	setWeatherTestTunable(t, s, tunableHookNibbleEnabled, "1")
 	sess, gc := newTunnelProbe(t, s)
@@ -575,6 +583,8 @@ func TestMarineNibbleVetoPushesFishLeave(t *testing.T) {
 // 否决后客户端的离场回执（14/12 f0=5，此时 Pending 已空）必须按良性回执忽略：
 // 不清刚重排的咬钩 timer，不把本竿标记为终局，也不产生任何推送。
 func TestNibbleVetoLeaveAckBenign(t *testing.T) {
+	hookRejectDisabled = false // 用户补丁：本测试验证原否决机制，临时打开
+	defer func() { hookRejectDisabled = true }()
 	s, _ := newRigTestServer(t)
 	setWeatherTestTunable(t, s, tunableHookNibbleEnabled, "1")
 	sess, gc := newTunnelProbe(t, s)

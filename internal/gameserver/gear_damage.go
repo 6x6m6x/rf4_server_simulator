@@ -269,7 +269,7 @@ func (s *Server) breakLineOrRodWithLineOut(ctx context.Context, uid int64, rodGU
 	if err != nil {
 		return nil, err
 	}
-	if protected {
+	if protected && s.gearAssistantEnabled() { // 用户补丁：总开关关闭时保护失效
 		return &gearBreakOutcome{OverloadProtected: true}, nil
 	}
 	// 断件即终局：把本竿已累计的渔轮磨损落库，否则这条账会随状态重置丢掉。

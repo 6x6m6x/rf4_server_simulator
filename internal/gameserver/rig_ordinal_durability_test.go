@@ -234,8 +234,8 @@ func TestWearPersistsColumnFieldsAndVersion(t *testing.T) {
 	if lineAfter.Durability != lineBefore.Durability {
 		t.Fatalf("主线不应按尾磨损: %v -> %v", lineBefore.Durability, lineAfter.Durability)
 	}
-	if math.Abs(hookAfter.Durability-(hookBefore.Durability-wearPerCatch["hook"])) > 1e-9 {
-		t.Fatalf("鱼钩列耐久磨损错误: %v -> %v", hookBefore.Durability, hookAfter.Durability)
+	if math.Abs(hookAfter.Durability-hookBefore.Durability) > 1e-9 {
+		t.Fatalf("用户补丁：鱼钩列耐久应不变: %v -> %v", hookBefore.Durability, hookAfter.Durability)
 	}
 	lineFieldsAfter, _ := FieldsFromJSON(lineAfter.FieldsJSON)
 	gotD := rigTestFieldFloat(t, lineFieldsAfter[fieldIdxByCS(lineAfter.WireClass, csDurability)])

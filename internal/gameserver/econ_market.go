@@ -1942,16 +1942,24 @@ func (s *Server) wearRigForCatch(ctx context.Context, rigGUID string) {
 		if c.GUID == "" {
 			continue
 		}
+		// 用户补丁：鱼线/引线/鱼钩/拟饵（含吸引成分）不参与耐久磨损。
+		if noWearCategory(c.Slot) {
+			continue
+		}
 		key, ok := slotWearKey[c.Slot]
 		if !ok {
 			key = "default"
 		}
-		amount := wearPerCatch[key]
+		amount := noWearAmount(key, wearPerCatch[key]) // 用户补丁：目标类别不磨损
 		if amount <= 0 {
 			continue
 		}
 		row, err := s.DB.GetItemByGUID(ctx, c.GUID)
 		if err != nil || row == nil {
+			continue
+		}
+		// 用户补丁兜底：slot 非类别口径的旧数据按 item_def 再判一次。
+		if s.noWearItemRow(ctx, row) {
 			continue
 		}
 		newD := math.Max(0.0, row.Durability-amount)

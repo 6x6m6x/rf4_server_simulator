@@ -95,3 +95,43 @@ func TestProfileAvailablePointsAfterLevelUp(t *testing.T) {
 	}
 	assertProfileAndSkillTreePoints(t, srv, 6)
 }
+
+// TestProfile307RegionField：307 f18=cddnjehkknm 是区域枚举(4=CN)，
+// 自己看自己的国旗读这个字段。原实现误填 p.Role(通常0=GL)导致空白。
+func TestProfile307RegionField(t *testing.T) {
+	for _, tc := range []struct {
+		region string
+		want   uint32
+	}{
+		{"CN", 4},
+		{"RU", 1},
+		{"GL", 0},
+		{"", 0},
+	} {
+		t.Run(tc.region+"_"+string(rune('0'+tc.want)), func(t *testing.T) {
+			srv, db := newProgressSrv(t)
+			ctx := t.Context()
+			uid := int64(2600000) + int64(tc.want) + int64(len(tc.region))
+			if _, err := db.EnsureProfile(ctx, uid); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.SQL.ExecContext(ctx, `UPDATE profile SET region=? WHERE uid=?`, tc.region, uid); err != nil {
+				t.Fatal(err)
+			}
+			p, err := srv.BuildProfile307W(ctx, uid, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(p.Fields) <= 18 {
+				t.Fatalf("307 fields=%d", len(p.Fields))
+			}
+			f := p.Field(18)
+			if f.Num == nil {
+				t.Fatalf("307 f18 region field missing: %+v", f)
+			}
+			if got := u32Of(f.Num); got != tc.want {
+				t.Fatalf("region=%q want f18=%d, got=%d (op=%s)", tc.region, tc.want, got, f.Op)
+			}
+		})
+	}
+}

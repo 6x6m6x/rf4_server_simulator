@@ -316,3 +316,78 @@ func TestMailAttachmentRepeatedAcceptIsIdempotent(t *testing.T) {
 		t.Fatalf("重复领取不应重复发件: count=%d", count)
 	}
 }
+
+// TestMailSendItemPicksBackpackGuidAmongDecoys：真实客户端 19/2 会带上物品树，
+// 报文里可能混有多个 GUID。寄件必须挑出真正属于发件人背包的那个，而不是盲取首个。
+func TestMailSendItemPicksBackpackGuidAmongDecoys(t *testing.T) {
+	t.Parallel()
+	srv, db := newEconomyTxTestServer(t)
+	ctx := context.Background()
+	sender, recipient := int64(2401), int64(2402)
+	seedEconomyItemDef(t, db, 9421, "mail_multiguid", 28)
+	for _, uid := range []int64{sender, recipient} {
+		if _, err := db.EnsureProfile(ctx, uid); err != nil {
+			t.Fatal(err)
+		}
+	}
+	source := economyTestItem(t, srv, sender, "mail_multiguid", "backpack", 1)
+	decoy := "ff000000000000000000000000000001" // 不属于任何人
+	// 诱饵 GUID 在前、真实物品 GUID 在后；两者都被 tree 深扫收集。
+	tree := proto.Args524(
+		proto.U32(uint32(recipient)), proto.U32(1),
+		proto.Guid(decoy),
+		proto.Obj("bhfikaplhmh", 560, proto.FGuid(source.GUID)),
+	)
+	sendCtx := economyTestCtx(srv, sender, tree)
+	if body, ok := hMailSendItem(sendCtx); !ok || len(body) == 0 || body[0] == 0x0F {
+		t.Fatalf("19/2 应在多 GUID 报文中寄出真实背包物品: ok=%v body=%x", ok, body)
+	}
+	var n int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM mail WHERE uid=? AND sender=?`, recipient, sender).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("应生成 1 封附件邮件, got=%d", n)
+	}
+	var remain int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM item WHERE guid=?`, source.GUID).Scan(&remain); err != nil {
+		t.Fatal(err)
+	}
+	if remain != 0 {
+		t.Fatalf("源物品应已扣除, 仍存在 %d 行", remain)
+	}
+}
+
+// TestMailSendItemBadRecipientDoesNotConsume：非法收件人（发给自己）不得扣件，
+// 回执保持 19/2 原有的空 args(61) 形状。
+func TestMailSendItemBadRecipientDoesNotConsume(t *testing.T) {
+	t.Parallel()
+	srv, db := newEconomyTxTestServer(t)
+	ctx := context.Background()
+	sender := int64(2411)
+	seedEconomyItemDef(t, db, 9431, "mail_badrecipient", 28)
+	if _, err := db.EnsureProfile(ctx, sender); err != nil {
+		t.Fatal(err)
+	}
+	source := economyTestItem(t, srv, sender, "mail_badrecipient", "backpack", 1)
+	sendCtx := economyTestCtx(srv, sender, proto.Args524(
+		proto.U32(uint32(sender)), proto.U32(1), proto.Guid(source.GUID)))
+	body, ok := hMailSendItem(sendCtx)
+	if !ok || len(body) == 0 {
+		t.Fatalf("handler 应回空 args(61): ok=%v body=%x", ok, body)
+	}
+	var remain int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM item WHERE guid=?`, source.GUID).Scan(&remain); err != nil {
+		t.Fatal(err)
+	}
+	if remain != 1 {
+		t.Fatalf("失败的寄件不应扣件, remain=%d", remain)
+	}
+	var mails int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM mail WHERE sender=?`, sender).Scan(&mails); err != nil {
+		t.Fatal(err)
+	}
+	if mails != 0 {
+		t.Fatalf("失败的寄件不应生成邮件, mails=%d", mails)
+	}
+}

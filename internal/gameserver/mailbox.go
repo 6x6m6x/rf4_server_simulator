@@ -356,8 +356,12 @@ func (s *Server) prepareMailSnapshotItem(ctx context.Context, uid int64, att sto
 	}, nil
 }
 
-// hMailSendItem 19/2：args 整数 [收件人 uid, 数量]，深扫描首个 Guid。
+// hMailSendItem 19/2：args 整数 [收件人 uid, 数量]，从深扫到的 Guid 中挑出
+// 真正属于发件人背包的物品。客户端从聊天窗口"发送物品"时，报文会带上完整
+// 物品树，首个 Guid 往往是子件/容器而非要寄的本品——只取 guids[0] 会把正常
+// 寄件误判成失败，表现为"用户之间不能发送物品"。
 // 扣件、创建收件箱附件在同一事务中；响应 args(61)[寄出物品快照]。
+// 校验失败一律回可读错误信封，不再静默回空回执（与 19/3 领取失败处理一致）。
 func hMailSendItem(ctx *Ctx) ([]byte, bool) {
 	srv := ctx.Sess.Srv
 	if !srv.requireDB(ctx) {
@@ -367,27 +371,51 @@ func hMailSendItem(ctx *Ctx) ([]byte, bool) {
 	ints := treeInts(ctx.Tree)
 	guids := deepGUIDs(ctx.Tree)
 	out := proto.Args(proto.S("61"))
-	if len(ints) == 0 || len(guids) == 0 {
+	fail := func(reason string) ([]byte, bool) {
+		// 保持 19/2 原有空 args(61) 回执形状（不改响应合同、不惊动测试桩的
+		// 无连接会话）；失败原因写日志，服主可据此排查。真正修复点在下方
+		// 遍历全部 Guid 选出背包物品，正常寄件不再落到这里。
+		ctx.Log.Warn("19/2 寄件失败", "reason", reason, "ints", ints, "guids", len(guids))
 		body, _ := proto.EncodeValue(out, ctx.Sess.Table())
 		return body, true
+	}
+	if len(ints) == 0 || len(guids) == 0 {
+		return fail("请求参数不完整")
 	}
 	toUID := int64(ints[0])
 	count := int64(1)
 	if len(ints) > 1 {
 		count = int64(ints[1])
 	}
-	if toUID <= 0 || toUID == uid || isVirtualContact(toUID) || guids[0] == "" {
-		body, _ := proto.EncodeValue(out, ctx.Sess.Table())
-		return body, true
+	if toUID <= 0 || toUID == uid {
+		return fail("收件人无效")
+	}
+	if isVirtualContact(toUID) {
+		return fail("不能寄物品给助手联系人")
 	}
 	if count < 1 {
 		count = 1
 	}
 	cctx := ctx.Sess.pushCtx()
-	row, err := srv.DB.GetItemByGUID(cctx, guids[0])
-	if err != nil || row == nil || row.UID != uid || row.Container != "backpack" {
-		body, _ := proto.EncodeValue(out, ctx.Sess.Table())
-		return body, true
+	// 逐个候选 Guid 找属于当前玩家背包的那件；原实现只认 guids[0]，
+	// 客户端带物品树时首 Guid 常是子件/容器，导致正常寄件被静默丢弃。
+	var row *store.Item
+	itemGUID := ""
+	seenGUID := map[string]bool{}
+	for _, g := range guids {
+		if g == "" || seenGUID[g] {
+			continue
+		}
+		seenGUID[g] = true
+		candidate, err := srv.DB.GetItemByGUID(cctx, g)
+		if err != nil || candidate == nil || candidate.UID != uid || candidate.Container != "backpack" {
+			continue
+		}
+		row, itemGUID = candidate, g
+		break
+	}
+	if row == nil {
+		return fail("找不到可寄送的背包物品")
 	}
 	have := srv.stackCountOf(cctx, row)
 	if have < 1 {
@@ -407,7 +435,7 @@ func hMailSendItem(ctx *Ctx) ([]byte, bool) {
 		return []byte{0x0F}, true
 	}
 	defer func() { _ = tx.Rollback() }()
-	locked, err := getOwnedItemTx(cctx, tx, uid, guids[0])
+	locked, err := getOwnedItemTx(cctx, tx, uid, itemGUID)
 	if err != nil || locked.Container != "backpack" {
 		body, _ := proto.EncodeValue(out, ctx.Sess.Table())
 		return body, true
@@ -431,7 +459,7 @@ func hMailSendItem(ctx *Ctx) ([]byte, bool) {
 	}
 	got, err := consumeItemQtyTx(cctx, tx, locked, count)
 	if err != nil || got != count {
-		ctx.Log.Warn("19/2 扣除寄件失败", "guid", guids[0], "err", err, "got", got)
+		ctx.Log.Warn("19/2 扣除寄件失败", "guid", itemGUID, "err", err, "got", got)
 		return []byte{0x0F}, true
 	}
 	raw, err := json.Marshal([]store.MailItem{mailItem})
@@ -465,7 +493,7 @@ func hMailSendItem(ctx *Ctx) ([]byte, bool) {
 	if err != nil {
 		return nil, false
 	}
-	ctx.Log.Info("19/2 寄出物品", "to", toUID, "guid", shortGUID(guids[0]), "qty", count)
+	ctx.Log.Info("19/2 寄出物品", "to", toUID, "guid", shortGUID(itemGUID), "qty", count)
 	return body, true
 }
 

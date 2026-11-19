@@ -101,6 +101,7 @@ func NewServer(cfg config.Admin, db *store.DB, log logger, webFS fs.FS) *Server 
 	mux.HandleFunc("GET /api/stores/items", auth(s.handleStoreItems))
 	mux.HandleFunc("POST /api/stores/items/update", auth(s.handleStoreItemUpdate))
 	mux.HandleFunc("POST /api/stores/items/reset", auth(s.handleStoreItemReset))
+	// 用户补丁：工作坊配置（换件价 + 每轮可装配件白名单）
 	mux.HandleFunc("GET /api/fish/areas", auth(s.handleFishAreas))
 	mux.HandleFunc("GET /api/fish/config", auth(s.handleFishConfig))
 	mux.HandleFunc("POST /api/fish/config", auth(s.handleFishConfigSave))
@@ -448,7 +449,7 @@ func (s *Server) handleTunableSet(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 400, "参数错误")
 		return
 	}
-	if (req.Key == "fish_ecology_enabled" || req.Key == "fish_bait_rules_enabled" || req.Key == "fish_distribution_enabled" || req.Key == "fish_weather_enabled" || req.Key == "happy_hour_enabled" || req.Key == "grade_ratio_enabled" || req.Key == "fish_hunt_enabled" || req.Key == "two_stage_hunt_enabled" || req.Key == "hook_nibble_enabled" || req.Key == "event_anniversary_enabled" || req.Key == "event_newyear_enabled" || req.Key == "condition_health_enabled" || req.Key == "condition_fishing_pause_enabled" || req.Key == "bite_pace_enabled") && req.Value != "0" && req.Value != "1" {
+	if (req.Key == "bite_pace_enabled" || req.Key == "condition_fishing_pause_enabled" || req.Key == "condition_health_enabled" || req.Key == "event_anniversary_enabled" || req.Key == "event_newyear_enabled" || req.Key == "fish_bait_rules_enabled" || req.Key == "fish_catch_channel" || req.Key == "fish_distribution_enabled" || req.Key == "fish_ecology_enabled" || req.Key == "fish_escape_channel" || req.Key == "fish_hunt_enabled" || req.Key == "fish_weather_enabled" || req.Key == "gear_assistant_enabled" || req.Key == "grade_ratio_enabled" || req.Key == "happy_hour_enabled" || req.Key == "hook_nibble_enabled" || req.Key == "loot_box_trophy_guarantee" || req.Key == "two_stage_hunt_enabled") && req.Value != "0" && req.Value != "1" {
 		httpError(w, 400, "开关只能为 0 或 1")
 		return
 	}

@@ -69,6 +69,9 @@ func restrictionsForLevel(levelKey string) []placeGearRule {
 	if levelKey == "" {
 		return nil
 	}
+	if copperRestrictionDisabled && levelKey == copperLakeLevelKey {
+		return nil // 用户补丁：铜湖解除全部钓具限制
+	}
 	if r, ok := loadPlacesRestrictions()[levelKey]; ok {
 		return r.Rules
 	}

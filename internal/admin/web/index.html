@@ -358,6 +358,7 @@ function refreshCurrent(){
   const jobs={dashboard:loadDashboard,players:()=>loadPlayers(false),stores:loadStores,fish:loadFishAreas,hooks:loadHookProfiles,bait:loadBaitPrefs,mail:()=>{},params:loadTunables,audit:loadAudit,release:loadReleaseNotes,about:loadAbout};
   (jobs[VIEW]||(()=>{}))().catch(e=>toast(e.message,'bad'));
 }
+
 // 发放物品会偶发造成玩家坏档，暂时关闭前端入口；后端接口保留。
 // 修复坏档问题后把此开关改回 true 即可恢复。
 const GRANT_ITEM_UI_ENABLED=false;
@@ -453,8 +454,14 @@ const TUNABLE_DEFS=[
   ['condition_health_enabled','健康动态（饥寒掉血）',1,'0=关闭：饿/冻不再掉血、生命恒满血；药品（Sorbimax）不扣数量也无恢复效果。1=饥饿或严寒时生命条缓慢下降，脱离后缓慢自愈'],
   ['condition_fishing_pause_enabled','垂钓中精力停摆',1,'0=关闭：竿在水里时精力照常自然恢复；1=竿在水里时精力暂停恢复，收竿后照常快速回满'],
   ['loot_box_enabled','钓获礼包开关',0,'默认关闭；1=钓上鱼按概率开礼包'],
+  ['gear_assistant_enabled','钓具助手（满红不爆）',1,'1=玩家可在聊天里自行开关；0=全服停用：联系人隐藏、保护立即失效。玩家已保存的设置保留，改回 1 后按原设置继续'],
   ['loot_box_chance','礼包触发概率',0.05,'0~1；留空则用 kv.loot_box_defs 里的 chance'],
-  ['loot_box_trophy_guarantee','奖杯/蓝冠保底',1,'1=钓到奖杯或蓝冠鱼必定开一包；0=关'],
+  ['loot_box_trophy_guarantee','蓝冠保底',1,'1=钓到蓝冠鱼必定开一包；0=关（默认1）。奖杯已拆出，走下方独立概率'],
+  ['loot_box_trophy_chance','上星开箱概率',0.5,'0~1；钓到上星鱼单独掷此概率开一包，0=关、1=必开；与蓝冠保底分开，默认0.5'],
+  ['loot_box_gold_lo','金币奖励下限(分)',1,'开箱随机金币的下限，单位分（100=1金），默认1；最小1'],
+  ['loot_box_gold_hi','金币奖励上限(分)',200,'开箱随机金币的上限，单位分（100=1金），默认200'],
+  ['loot_box_gold_sigma','金币集中度σ',30,'截断正态的σ，越小越集中在期望附近、越大越分散；默认30'],
+  ['loot_box_gold_mean','金币期望(分)',100,'校准目标均值，单位分（100=1金），默认100；自动收敛到该值，超出[下限,上限]会被钳制'],
   ['card_drop_normal','普通 / 达标鱼掉卡率',0.001,'0~1。默认 0.001 = 0.1%，每尾实际钓获抽一次'],
   ['card_drop_star','星鱼掉卡率',0.5,'0~1。默认 0.5 = 50%'],
   ['card_drop_blue','蓝冠鱼掉卡率',0.8,'0~1。默认 0.8 = 80%'],
@@ -1224,7 +1231,8 @@ async function loadTunables(){
   {id:'reward',tab:'收益与通知',sub:'经验 · 掉卡 · 礼包 · 档位 · 聊天',groups:[
     ['经验与结算','改后只对新结算的鱼生效，已入护的不重算',['xp_gain','release_xp_ratio']],
     ['钓获掉卡','本地自定概率；最多 30 秒生效，重连或重复结算不补抽',['card_drop_normal','card_drop_star','card_drop_blue','card_drop_rare_scale']],
-    ['钓获礼包','钓上鱼当场开箱，奖励直接进背包并播报',['loot_box_enabled','loot_box_chance','loot_box_trophy_guarantee']],
+    ['钓获礼包','钓上鱼当场开箱并播报；蓝冠必保底、奖杯走独立概率；奖励为随机金币（截断正态）',['loot_box_enabled','loot_box_chance','loot_box_trophy_guarantee','loot_box_trophy_chance','loot_box_gold_lo','loot_box_gold_hi','loot_box_gold_sigma','loot_box_gold_mean']],
+    ['助手开关','虚拟联系人；改动后最多 30 秒生效',['gear_assistant_enabled']],
     ['聊天通知','跑鱼提示与上钩播报分别设置；保存后最多 30 秒生效',['fish_escape_taunt','fish_hooked_chat']],
   ],
   spawnCard:true},

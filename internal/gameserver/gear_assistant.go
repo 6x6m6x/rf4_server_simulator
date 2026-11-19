@@ -11,6 +11,16 @@ import (
 const gearAssistantUID int64 = 2147483646
 const gearAssistantName = "钓具助手"
 
+// gearAssistantDisabledReply 是后台总开关关闭时，助手给出的唯一回复。
+// 不读取也不改写玩家已保存的开关：重新开启后按原设置继续生效。
+const gearAssistantDisabledReply = "钓具助手已停用，满红不爆暂时不可用。\n如需恢复，请联系服主在后台运行参数中开启。"
+
+// gearAssistantEnabled 是钓具助手的全服总开关（tunables: gear_assistant_enabled）。
+// 缺省开启；置 0 后满红不爆立即失效，联系人也不再出现在玩家列表。
+func (s *Server) gearAssistantEnabled() bool {
+	return s.tunableS("gear_assistant_enabled", "1") != "0"
+}
+
 func overloadProtectionKey(uid int64) string {
 	return fmt.Sprintf("gear-assistant:overload-protection:%d", uid)
 }
@@ -201,6 +211,11 @@ func (s *Server) receiveGearAssistant(ctx *Ctx, text string) ([]byte, bool) {
 	if uid <= 0 {
 		ctx.ReplyFailure("System.InvalidOperationException", "请先登录")
 		return nil, true
+	}
+	// 后台总开关关闭：只回一条停用说明，不读取也不改写玩家已保存的开关，
+	// 重新开启后按原设置继续生效。
+	if !s.gearAssistantEnabled() {
+		return s.gearAssistantReplyText(ctx, uid, gearAssistantDisabledReply)
 	}
 
 	// 二级菜单：只响应 y/n/h/b，未知重显，b 返回一级。
