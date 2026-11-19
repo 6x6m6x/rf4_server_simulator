@@ -435,6 +435,9 @@ func (s *Server) applyFightReelWear(ctx context.Context, uid int64, w fightReelW
 	if s == nil || s.DB == nil {
 		return false
 	}
+	if noWearAll { // 用户补丁：关闭全部搏鱼渐变磨损（摩擦片/轮本体/轮零件/竿零件/前导）；断竿炸轮断线炸钩等外力不经过此函数，不受影响。
+		return false
+	}
 	if !s.resolveFightReelGUID(ctx, &w) {
 		return false
 	}
@@ -614,7 +617,7 @@ func (s *Server) applyLeaderStressWear(ctx context.Context, uid int64, w *fightR
 	if err != nil || row == nil || row.UID != uid || row.Durability <= 0 {
 		return
 	}
-	rate := s.leaderStressWearPerSec()
+	rate := noWearLeaderStressRate(s.leaderStressWearPerSec()) // 用户补丁：前导不受力磨损
 	if rate <= 0 {
 		return
 	}

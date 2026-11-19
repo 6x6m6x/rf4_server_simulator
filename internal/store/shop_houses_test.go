@@ -7,7 +7,7 @@ import (
 
 // 房产商店（housestore_*）走内嵌实抓货架：客户端打开买房界面拉 22/1 时，
 // 货架必须包含对应地点的房子商品，否则客户端无法发起购买。
-// 价格与 22/5 面板（gameserver shop_boats.json）一致：廓里湖 28000 / 挪威海 44000。
+// 价格与 22/5 面板（gameserver shop_boats.json）一致：廓里湖/挪威海银价 500000000（5,000,000 银币）、金币价 0（面板与金币购买均关闭，银币不联动）。
 func TestHouseStoreShelfSellsLocationHouse(t *testing.T) {
 	db := openShopCatalogTestDB(t)
 
@@ -22,7 +22,7 @@ func TestHouseStoreShelfSellsLocationHouse(t *testing.T) {
 		t.Fatalf("housestore_012 货架=%d 行 want=1", len(res.Effective))
 	}
 	row := res.Effective[0]
-	if row.ItemID != "level_012_north_sea_house" || row.Silver != 4400000 || row.Gold != 0 {
+	if row.ItemID != "level_012_north_sea_house" || row.Silver != 500000000 || row.Gold != 0 {
 		t.Fatalf("housestore_012 货架行 %+v", row)
 	}
 
@@ -30,8 +30,8 @@ func TestHouseStoreShelfSellsLocationHouse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("廓里湖房子不在货架: %v", err)
 	}
-	if price.Silver != 2800000 || price.Gold != 0 {
-		t.Fatalf("廓里湖房子价格 %+v want silver=2800000 gold=0", price)
+	if price.Silver != 500000000 || price.Gold != 0 {
+		t.Fatalf("廓里湖房子价格 %+v want silver=500000000 gold=0", price)
 	}
 }
 

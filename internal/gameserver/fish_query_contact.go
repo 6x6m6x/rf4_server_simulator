@@ -18,17 +18,23 @@ const fishQueryContactName = "查鱼助手"
 
 func hSocialMembers(ctx *Ctx) ([]byte, bool) {
 	s := ctx.Sess.Srv
-	ids := []uint32{uint32(fishQueryContactUID), uint32(gearAssistantUID)}
+	ids := []uint32{uint32(fishQueryContactUID)}
+	// 后台关闭钓具助手后，联系人不再出现在玩家列表；已缓存的会话仍会收到停用回复。
+	if s.gearAssistantEnabled() {
+		ids = append(ids, uint32(gearAssistantUID))
+	}
 	seen := map[int64]bool{fishQueryContactUID: true, gearAssistantUID: true}
+	players := make([]uint32, 0, len(s.sessions))
 	s.mu.Lock()
 	for _, peer := range s.sessions {
 		if peer != nil && !peer.Closed() && peer.Userid > 0 && !seen[peer.Userid] {
-			ids = append(ids, uint32(peer.Userid))
+			players = append(players, uint32(peer.Userid))
 			seen[peer.Userid] = true
 		}
 	}
 	s.mu.Unlock()
-	sort.Slice(ids[2:], func(i, j int) bool { return ids[i+2] < ids[j+2] })
+	sort.Slice(players, func(i, j int) bool { return players[i] < players[j] })
+	ids = append(ids, players...)
 	return encodeSocialTree(ctx, proto.U32Arr(ids))
 }
 

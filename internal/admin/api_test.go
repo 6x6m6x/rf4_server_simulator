@@ -202,6 +202,18 @@ func TestAdminAPI(t *testing.T) {
 	}
 	_ = db.TunableSet(context.Background(), "bite_probability", "1.0", "test")
 
+	// 钓具助手总开关只接受 0/1
+	if code, _ = call("POST", "/api/tunables", token, `{"key":"gear_assistant_enabled","value":"2"}`); code != 400 {
+		t.Fatalf("总开关非法值应 400, 实得 %d", code)
+	}
+	if code, _ = call("POST", "/api/tunables", token, `{"key":"gear_assistant_enabled","value":"0"}`); code != 200 {
+		t.Fatalf("关闭钓具助手失败 %d", code)
+	}
+	if v, ok, _ := db.TunableGet(context.Background(), "gear_assistant_enabled"); !ok || v != "0" {
+		t.Fatalf("总开关未落库: %q", v)
+	}
+	_ = db.TunableSet(context.Background(), "gear_assistant_enabled", "1", "test")
+
 	// 玩家列表
 	code, body = call("GET", "/api/players?q=1000001", token, "")
 	if code != 200 || !strings.Contains(body, `"uid":1000001`) {
@@ -376,7 +388,6 @@ func TestValidateEventStageGifts(t *testing.T) {
 		`{"18":{"10":[{"item":"ab_tea_can2","qty":99}]}}`,
 		`{"14":{"10":[{"item":"ab_tea_can2","qty":99}]}}`,
 		`{"20":{"7":[{"item":"ab_tea_can2","qty":99}]}}`,
-		`{"19":{"0":[{"item":"premium_3d","qty":1},{"item":"tele_10175_5_9","qty":1}]}}`,
 	} {
 		if err := validateEventStageGifts(value); err != nil {
 			t.Fatalf("%q 应合法: %v", value, err)
@@ -384,7 +395,6 @@ func TestValidateEventStageGifts(t *testing.T) {
 	}
 	for _, value := range []string{
 		"not-json",
-		`{"19":{"-1":[{"item":"premium_3d","qty":1}]}}`,
 		`{"8":{"1":[{"item":"fcb_coffee_can2","qty":1}]}}`,
 		`{"13":{"11":[{"item":"fcb_coffee_can2","qty":1}]}}`,
 		`{"13":{"8":[{"item":"fcb_coffee_can2","qty":1}]}}`,

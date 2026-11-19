@@ -10,6 +10,8 @@ import (
 // 档位≥4 禁、spin 纺车轮 size 档≥6 禁。
 
 func TestPlaceGearRuleViolated(t *testing.T) {
+	copperRestrictionDisabled = false // 用户补丁：本测试验证原限制机制，临时打开
+	defer func() { copperRestrictionDisabled = true }()
 	srv, db := newRigTestServer(t)
 	ctx := context.Background()
 	rules := restrictionsForLevel("level_018_moskitnoe")
@@ -52,6 +54,8 @@ func TestPlaceRestrictionOnlyOnRegisteredLevel(t *testing.T) {
 }
 
 func TestPlaceRodAndRigViolation(t *testing.T) {
+	copperRestrictionDisabled = false // 用户补丁：本测试验证原限制机制，临时打开
+	defer func() { copperRestrictionDisabled = true }()
 	srv, db := newRigTestServer(t)
 	ctx := context.Background()
 	const uid = int64(1000001)

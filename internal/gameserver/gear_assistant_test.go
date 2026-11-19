@@ -16,7 +16,8 @@ func sendGearAssistantForTest(t *testing.T, s *Server, sess *Session, text strin
 	ctx.ExpectResponse = true
 	res := s.dispatch.executeRequest(ctx, true)
 	if res.nativeFailure || len(res.body) != 1 || res.body[0] != 0 {
-		t.Fatalf("assistant request failed: %q", res.body)
+		t.Fatalf("assistant request failed: body=%q failed=%v native=%v reason=%q",
+			res.body, res.failed, res.nativeFailure, res.errorText)
 	}
 }
 
@@ -337,6 +338,10 @@ func TestGearAssistantProtectsThreeRodsAndKeepsManualActions(t *testing.T) {
 }
 
 func TestGearAssistantToggleKeepsWearBoundaries(t *testing.T) {
+	prevNoWear := noWearAll
+	noWearAll = false
+	defer func() { noWearAll = prevNoWear }() // 用户补丁：本用例锁定旧磨损行为，临时恢复上游磨损
+
 	s, db := newRigTestServer(t)
 	sess := newProbeSess(s)
 	uid := sess.Userid
@@ -392,6 +397,68 @@ func TestGearAssistantToggleKeepsWearBoundaries(t *testing.T) {
 	s.settleFightReelWearState(t.Context(), st, uid, "14/4")
 	if again := *mustItem(t, db, reel.GUID); again != after {
 		t.Fatal("duplicate settlement charged wear again")
+	}
+}
+
+// 后台总开关关闭后：联系人隐藏、消息只回停用说明且不改玩家设置。
+func TestGearAssistantServerSwitchHidesContactAndKeepsSetting(t *testing.T) {
+	env := newDLineTestEnv(t, 1000001)
+	if _, err := env.db.EnsureProfile(t.Context(), env.sess.Userid); err != nil {
+		t.Fatal(err)
+	}
+	sendGearAssistantForTest(t, env.srv, env.sess, "开")
+	if err := env.db.TunableSet(t.Context(), "gear_assistant_enabled", "0", "test"); err != nil {
+		t.Fatal(err)
+	}
+	env.srv.execAdminCmd(&AdminCommand{Op: "reload_tunables"})
+	if env.srv.gearAssistantEnabled() {
+		t.Fatal("总开关关闭后仍视为开启")
+	}
+	members := env.invoke(t, 24, 4, proto.Args524(proto.U32(0), proto.StrVal("")))
+	for _, member := range members.Items {
+		if member.Num == uint64(gearAssistantUID) {
+			t.Fatalf("停用后钓具助手仍出现在联系人列表: %+v", members)
+		}
+	}
+	sendGearAssistantForTest(t, env.srv, env.sess, "关")
+	if on, err := readOverloadProtection(t.Context(), env.db.SQL, env.sess.Userid); err != nil || !on {
+		t.Fatalf("停用期间的指令改写了玩家设置: enabled=%v err=%v", on, err)
+	}
+	mails, err := env.db.MailList(t.Context(), env.sess.Userid, false)
+	if err != nil || len(mails) == 0 || !strings.Contains(mails[0].Text, "已停用") {
+		t.Fatalf("停用回复异常: %+v %v", mails, err)
+	}
+}
+
+// 后台总开关关闭后，已开启玩家的 17/9 保护立即失效，断件回到正常结算。
+func TestGearAssistantServerSwitchDisablesProtection(t *testing.T) {
+	s, db := newRigTestServer(t)
+	sess := newProbeSess(s)
+	uid := sess.Userid
+	sendGearAssistantForTest(t, s, sess, "开")
+	created := make([]*store.Item, 0, 4)
+	for _, itemID := range []string{"spin_10001_S60L", "spin_5820", "mono_15249", "orig_20008_18"} {
+		row, err := s.CreateItem(t.Context(), uid, itemID, "backpack", 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		created = append(created, row)
+	}
+	rod := created[0].GUID
+	for _, item := range created[1:] {
+		mountGearForTest(t, s, sess, rod, item.GUID)
+	}
+	slots := rigSlotGUIDs(t, s, rod)
+	if out, err := s.breakLineOrRod(t.Context(), uid, rod, slots[catHook]); err != nil || !out.OverloadProtected {
+		t.Fatalf("总开关开启时保护未生效: %+v %v", out, err)
+	}
+	if err := db.TunableSet(t.Context(), "gear_assistant_enabled", "0", "test"); err != nil {
+		t.Fatal(err)
+	}
+	s.execAdminCmd(&AdminCommand{Op: "reload_tunables"})
+	out, err := s.breakLineOrRod(t.Context(), uid, rod, slots[catHook])
+	if err != nil || out.OverloadProtected || !out.ComponentBroken {
+		t.Fatalf("总开关关闭后保护仍生效: %+v %v", out, err)
 	}
 }
 

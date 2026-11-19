@@ -163,12 +163,12 @@ func (s *Server) wearRigForCatchPersisted(ctx context.Context, rigGUID string) {
 			if rerr != nil || row == nil {
 				continue
 			}
-			applyWear(row, key, wearPerCatch[key], c.Slot, c.Ordinal)
+			applyWear(row, key, noWearAmount(key, wearPerCatch[key]), c.Slot, c.Ordinal) // 用户补丁：目标类别不磨损
 		}
 	}
 	// 竿本体不在 rig_component 中，单独施加结构磨损。
 	if rod, rerr := s.DB.GetItemByGUID(ctx, rigGUID); rerr == nil && rod != nil {
-		applyWear(rod, "rod", wearPerCatch["rod"], gearCatRod, 0)
+		applyWear(rod, "rod", noWearAmount("rod", wearPerCatch["rod"]), gearCatRod, 0) // 用户补丁：竿本体不磨损
 	}
 }
 

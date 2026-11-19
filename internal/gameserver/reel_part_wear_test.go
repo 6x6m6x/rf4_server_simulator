@@ -132,6 +132,10 @@ func newFightAccount(rated float64, perf *store.ReelPerformance, reelGUID string
 // TestFightSettlementWearsPartsAndBody 确认一次结算同时写到三处：摩擦片制动力、
 // 轮内零件耐久、本体耐久。只写其中一处就会出现“片磨了但配件与外面那格不动”。
 func TestFightSettlementWearsPartsAndBody(t *testing.T) {
+	prevNoWear := noWearAll
+	noWearAll = false
+	defer func() { noWearAll = prevNoWear }() // 用户补丁：本用例锁定旧磨损行为，临时恢复上游磨损
+
 	srv, db, ctx, reelGUID, before := wearReelFixture(t)
 	rated, ok := srv.reelWasherRatedFromRow(ctx, wearReelRow(t, db, ctx, reelGUID))
 	if !ok || rated <= 0 {
@@ -183,6 +187,10 @@ func TestFightSettlementWearsPartsAndBody(t *testing.T) {
 // TestBurnedWasherBreaksReel 确认摩擦片烧穿后的后果：制动力与承力归零（收不了线），
 // 本体耐久归零（客户端红框、只能剪线后修）。
 func TestBurnedWasherBreaksReel(t *testing.T) {
+	prevNoWear := noWearAll
+	noWearAll = false
+	defer func() { noWearAll = prevNoWear }() // 用户补丁：本用例锁定旧磨损行为，临时恢复上游磨损
+
 	srv, db, ctx, reelGUID, perf := wearReelFixture(t)
 	rated, _ := srv.reelWasherRatedFromRow(ctx, wearReelRow(t, db, ctx, reelGUID))
 	w := newFightAccount(rated, perf, reelGUID)
@@ -249,6 +257,10 @@ func TestEmptyFightSettlesNothing(t *testing.T) {
 // TestBodyDurabilityNeverRaisedByWear 确认单调保护：存量轮子（零件全 1.0 但本体已磨旧）
 // 不能被聚合公式刷回满值。
 func TestBodyDurabilityNeverRaisedByWear(t *testing.T) {
+	prevNoWear := noWearAll
+	noWearAll = false
+	defer func() { noWearAll = prevNoWear }() // 用户补丁：本用例锁定旧磨损行为，临时恢复上游磨损
+
 	srv, db, ctx, reelGUID, perf := wearReelFixture(t)
 	if err := db.SetItemDurability(ctx, reelGUID, 0.795); err != nil {
 		t.Fatalf("写本体耐久失败: %v", err)

@@ -294,7 +294,7 @@ func (s *Server) BuildProfile307W(ctx context.Context, uid int64, wNow int64) (*
 		15: proto.U32(profileFlags),
 		16: proto.U32(uint32(rareCatches)),
 		17: proto.StrVal(p.Email),
-		18: proto.U32(uint32(p.Role)),
+		18: proto.U32(uint32(socialRegionCode(p.Region))), // 用户补丁：307 f18=cddnjehkknm 是区域枚举(4=CN)，原误填 Role 导致自己看自己没国旗
 		19: proto.U64(uint64(p.Bank)),
 		20: proto.ArrayOf(hexOf(houseItems)),
 		21: proto.Str(nil),

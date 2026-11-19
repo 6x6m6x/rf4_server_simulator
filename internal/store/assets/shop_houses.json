@@ -5,14 +5,14 @@
       "store_id": "housestore_003",
       "map_key": "level_003_viiveri_lake",
       "item_id": "level_003_viiveri_lake_house",
-      "silver": 2800000,
+      "silver": 500000000,
       "gold": 0
     },
     {
       "store_id": "housestore_012",
       "map_key": "level_012_north_sea",
       "item_id": "level_012_north_sea_house",
-      "silver": 4400000,
+      "silver": 500000000,
       "gold": 0
     }
   ]
