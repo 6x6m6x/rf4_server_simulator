@@ -81,6 +81,16 @@ var rigTypeLureFamily = map[int64]bool{
 
 func marineRigType(rigType int64) bool { return rigType >= 50 && rigType <= 60 }
 
+// marineOnlyLevelKey 是唯一允许海洋钓组上鱼的海图（挪威海）。
+// 与 qualification_event_rules.go 的 evLocNorthSea、loc_alias 的
+// level_012_north_sea 同源；currentLevel(uid) 返回的正是这个 level key。
+const marineOnlyLevelKey = "level_012_north_sea"
+
+// marineBlockedOnLevel：该钓组在此地图是否应被禁止上鱼。
+func marineBlockedOnLevel(rigType int64, levelKey string) bool {
+	return marineRigType(rigType) && levelKey != marineOnlyLevelKey
+}
+
 // rigTypeSpod 打窝器竿（18 = rig_BottomFeedRocket）：竿只把窝料送去落点，
 // 自己不钓鱼，所以客户端不发 14/7 钓组动画，入水信号只有 14/3 那一条。
 const rigTypeSpod = int64(18)
