@@ -14,6 +14,17 @@ import (
 
 // 档案、技能树与推送树构造。
 
+// 用户补丁：钓鱼游购买页隐藏（f22 虚拟注入 buyout）。
+const (
+	tripHiddenPlaceCopper    = "level_018_moskitnoe" // 铜湖
+	tripHiddenPlaceNorthSea  = "level_012_north_sea" // 挪威海
+)
+
+// tripPurchaseHiddenNow 读开关：默认 1=隐藏；0=恢复原行为（回归测试用）。
+func (s *Server) tripPurchaseHiddenNow() bool {
+	return s != nil && s.tunableF("trip_purchase_hidden", 1) == 1
+}
+
 // 通行证使用的固定时间常量。
 const (
 	pass745F2                       = uint64(131765184000000000)
@@ -163,8 +174,22 @@ func (s *Server) BuildProfile307W(ctx context.Context, uid int64, wNow int64) (*
 	}
 	places, _ := s.DB.PlaceAccessList(ctx, uid)
 	placeItems := make([]*proto.Value, 0, len(places))
+	havePlace := map[string]bool{}
 	for _, pl := range places {
 		placeItems = append(placeItems, proto.BytesOf([]byte(pl)))
+		havePlace[pl] = true
+	}
+	// 用户补丁：隐藏铜湖+挪威海钓鱼游购买页——在档案 307 f22 虚拟注入这两地图
+	// 的"永久买断"条目（不落库，对所有玩家生效）。客户端把 f22 地点一律渲染成
+	// "已买断"并隐藏购买入口；购买页本身是客户端本地静态渲染，服务端只有 f22
+	// 能影响显示。开关 trip_purchase_hidden=0 恢复原行为。
+	if s.tripPurchaseHiddenNow() {
+		for _, pl := range []string{tripHiddenPlaceCopper, tripHiddenPlaceNorthSea} {
+			if !havePlace[pl] {
+				placeItems = append(placeItems, proto.BytesOf([]byte(pl)))
+				havePlace[pl] = true
+			}
+		}
 	}
 	// f20 携带已拥有房屋（实测 2026-11-05：客户端据此把已购房屋显示为
 	// "进入"；f22 房屋条目无效）。编码与 f22 一致，为地点/物品键的 hex。
