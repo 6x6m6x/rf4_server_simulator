@@ -106,6 +106,12 @@ func hSocialUserCard(ctx *Ctx) ([]byte, bool) {
 			}
 		}
 	}
+	// f6 是「在线（online）」字段：客户端据此点亮/熄灭联系人列表里的在线灯。
+	// 此前恒传 0，在线灯永远灭着。
+	online := int64(0)
+	if ctx.Sess.Srv != nil && ctx.Sess.Srv.userOnline(uid) {
+		online = 1
+	}
 	inner := wiregen.MustMakeObj("dgbmlekfpbg", map[int]*proto.Value{
 		0: proto.U32(uint32(uid)),
 		1: proto.StrVal(names),
@@ -113,7 +119,7 @@ func hSocialUserCard(ctx *Ctx) ([]byte, bool) {
 		3: proto.U32(uint32(role)),
 		4: proto.U32(uint32(level)),
 		5: proto.U32(uint32(trophies)),
-		6: proto.U32(0),
+		6: proto.U32(uint32(online)),
 		7: proto.U32(uint32(region)),
 		8: proto.U32(0),
 	})
