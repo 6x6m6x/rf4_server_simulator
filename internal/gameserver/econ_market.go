@@ -1057,11 +1057,14 @@ func (s *Server) partAlternatives(ctx context.Context, reelItemID string, part r
 			3: proto.U32(2),
 		}))
 	}
-	addJob(def.ItemID)
+	// 用户补丁：工坊改装页"多出一个以轮子名字命名的装置选项"根因——
+	// 本体行(cat=6)此前会先 addJob(def.ItemID) 把整只轮子塞进自己的替代品列表，
+	// 客户端就渲染出一个名为轮子型号的"装置"。本体只允许同型号修理，
+	// 不给任何替代工单（空 f5），先判断再 addJob。
 	if def.Category == gearCatReel {
-		// 本体只允许修复，不允许把整只渔轮当作零件替换成另一型号。
 		return out
 	}
+	addJob(def.ItemID)
 	// 导环/杆坯只允许修复；轮子的轴承和线杯按精确兼容表提供替代型号。
 	if noReplaceCategories[def.Category] {
 		return out
