@@ -31,6 +31,7 @@ func TestTravelLockedVoucherMapRejected(t *testing.T) {
 	db := connectTestDB(t)
 	const uid int64 = 1000091
 	srv := newLocationTestServer(t, db)
+	enableTripPurchaseForTest(t, srv)
 	ctx := context.Background()
 
 	if _, err := db.EnsureProfile(ctx, uid); err != nil {
