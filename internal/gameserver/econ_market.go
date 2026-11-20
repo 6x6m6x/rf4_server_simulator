@@ -663,13 +663,18 @@ func hWorkshopList(ctx *Ctx) ([]byte, bool) {
 		parts := srv.repairPartsOf(cctx, r)
 		slots := make([]uint32, 0, len(parts))
 		for _, p := range parts {
+			// 用户补丁：摇柄(34)按官服行为不在工坊展示（整行隐藏）；
+			// 21/4 下单仍用全量列表，维修功能不下掉。
+			if workshopHiddenInUI(p.Cat) {
+				continue
+			}
 			slots = append(slots, p.Cat)
 		}
 		// f1 是完好度（1.0=全新）：客户端实测值为 0.9999x~1.0，不是磨损百分比，
 		// 发 1-durability 会把满耐久物品报成 0% 完好度，修理报价随之算错。
 		// f2 是可修档位（客户端实测 4/5 量级），这里取可修零件数。
 		condition := r.Durability
-		grade := int64(len(parts))
+		grade := int64(len(slots)) // 用户补丁：与展示的 slots 同步（隐藏摇柄后档位数一致）
 		out.Items = append(out.Items, wiregen.MustMakeObj("ookkpknacja", map[int]*proto.Value{
 			0: proto.Guid(r.GUID),
 			1: proto.U32(proto.F32Bits(float32(condition))),
@@ -814,7 +819,16 @@ var workshopPartCategories = map[uint32]bool{
 
 // noReplaceCategories 不允许更换型号、只能修复的零件品类。
 // 轴承和线杯在精确兼容表中有合法替代件，不能在这里硬禁用。
-var noReplaceCategories = map[int64]bool{5: true, 36: true}
+// 34 旋钮/摇柄：官服客户端不显示其"选择替代品"入口（仅显示本件维修），
+// 服务端在此隐藏替代型号，但零件本身仍在工单、维修功能不受影响。
+var noReplaceCategories = map[int64]bool{5: true, 34: true, 36: true}
+
+// workshopHiddenInUI：官服客户端不展示的工坊零件品类。
+// 只在 21/1 列表与 21/2 诊断的展示层过滤；repairPartsOf 与 21/4 下单保持
+// 全量，确保仍接受这些零件的维修订单（功能不下掉，避免字段/计价 bug）。
+func workshopHiddenInUI(cat uint32) bool {
+	return cat == 34 // 摇柄/旋钮
+}
 
 var partBasePrice = map[int64][2]int64{
 	4:  {600, 6},   // 竿柄
@@ -1054,7 +1068,16 @@ func (s *Server) partAlternatives(ctx context.Context, reelItemID string, part r
 	}
 	// 轮油是通用保养耗材，不受轮子型号前缀限制。静态库中的各品质油均可
 	// 作为替代件，实际品质会进入服务端超载耐久计算。
+	// 用户补丁：compat 表若为该轮配置了品类 10 的油列表，优先用它（可在管理工具里
+	// 逐轮框定）；未配置/空列表则回退下面的原逻辑（全部 cat10 油 + 品牌匹配排序）。
+	// 注意 compatFor 的 found 只表示"轮子在表里"，必须判断油列表本身非空。
 	if def.Category == 10 {
+		if ids, _ := s.compatFor(reelItemID, "10"); len(ids) > 0 {
+			for _, id := range ids {
+				addJob(id)
+			}
+			return out
+		}
 		rows, qerr := s.DB.SQL.QueryContext(ctx, `
 			SELECT item_id FROM item_def WHERE category=10
 			ORDER BY CAST(json_extract(attrs_json,'$.obifdihmcfn') AS INTEGER), numeric_id`)
@@ -1273,6 +1296,10 @@ func hWorkshopDiag(ctx *Ctx) ([]byte, bool) {
 	comps := proto.Args(proto.S("143")) // 元素类 hlopebmchhp(poolccanfhd, type_id 504) 的 args code
 	if row, rerr := srv.DB.GetItemByGUID(cctx, guid); rerr == nil && row != nil {
 		for _, p := range srv.repairPartsOf(cctx, row) {
+			// 用户补丁：摇柄(34)按官服行为整行隐藏，不下发到诊断列表。
+			if workshopHiddenInUI(p.Cat) {
+				continue
+			}
 			// f3 = 该零件的修理报价，完好度 1.0 时为 0。
 			repairSilver := workshopPartRepairPrice(p.Cond)
 			comps.Items = append(comps.Items, wiregen.MustMakeObj("hlopebmchhp", map[int]*proto.Value{
