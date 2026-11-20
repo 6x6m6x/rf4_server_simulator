@@ -178,13 +178,6 @@ func (s *Server) applyBiteGates(ctx context.Context, keys []string, wts []float6
 			wts[i] *= score
 		}
 		w := wts[i]
-		// 用户补丁：挪威海鱼种不受水层硬门 G2 约束（与生态软权重同一口径）。
-		// 只跳过水层降权；食性硬门（G1/G-diet）、天气/水深等规则全部照常。
-		if s.isNorthSeaFish(p.FishKey) {
-			outKeys = append(outKeys, key)
-			outWts = append(outWts, w)
-			continue
-		}
 		if target < p.LayerMin-biteGateLayerTol || target > p.LayerMax+biteGateLayerTol {
 			// 保底杂口（c.pityEnv）：地板抬到至少 0.05，让连续空杆的线能动；
 			// 食性类硬门（G1/G-diet）不受 pityEnv 影响。
