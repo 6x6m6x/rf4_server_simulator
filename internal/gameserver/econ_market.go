@@ -827,7 +827,10 @@ var noReplaceCategories = map[int64]bool{5: true, 34: true, 36: true}
 // 只在 21/1 列表与 21/2 诊断的展示层过滤；repairPartsOf 与 21/4 下单保持
 // 全量，确保仍接受这些零件的维修订单（功能不下掉，避免字段/计价 bug）。
 func workshopHiddenInUI(cat uint32) bool {
-	return cat == 34 // 摇柄/旋钮
+	return cat == 34 || // 摇柄/旋钮
+		cat == uint32(gearCatReel) // 用户补丁：渔轮本体(cat=6)——改装非原件后内件全满时
+	// repairPartsOf 会补一行本体行，GUID=轮子自身，客户端渲染成以轮子型号命名的"装置"栏。
+	// 只在展示层(21/1/21/2)隐藏；repairPartsOf 与 21/4 保持全量，本体修理功能不受影响。
 }
 
 var partBasePrice = map[int64][2]int64{

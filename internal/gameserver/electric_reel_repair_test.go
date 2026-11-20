@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"rf4server/internal/logging"
-	"rf4server/internal/proto"
 )
 
 func TestWorkshopRepairsReelBodyWhenAllPartsLookFull(t *testing.T) {
@@ -37,40 +36,18 @@ func TestWorkshopRepairsReelBodyWhenAllPartsLookFull(t *testing.T) {
 		t.Fatal("本体耐久为 0 时工坊必须提供本体修理行")
 	}
 
-	diagBody, ok := hWorkshopDiag(&Ctx{
-		Sess: newProbeSess(srv),
-		Tree: proto.Args524(proto.Guid(reel.GUID)),
-		Log:  logging.Discard(),
-	})
-	if !ok || len(diagBody) == 0 {
-		t.Fatal("21/2 未返回电轮本体诊断")
-	}
-	diag, _, err := proto.DecodeValue(diagBody, 0, srv.Table())
-	if err != nil {
-		t.Fatal(err)
-	}
-	comps := diag.Field(1).Val
-	if comps == nil {
-		t.Fatal("21/2 缺少组件列表")
-	}
-	bodyQuote := int64(-1)
-	for _, comp := range comps.Items {
-		if comp == nil || comp.Kind != proto.KindObj || comp.FieldCount() < 4 {
-			continue
+	// 用户补丁：本体行在 21/1/21/2 展示层隐藏（"装置"栏），但数据源与 21/4 下单仍保留。
+	// 原断言通过 21/2 诊断取报价，隐藏后取不到——改从 repairPartsOf 的本体行核对完好度，
+	// 报价由 21/4 下单扣款（下方）验证。
+	bodyCond := float64(-1)
+	for _, part := range parts {
+		if part.Cat == uint32(gearCatReel) {
+			bodyCond = part.Cond
+			break
 		}
-		guidField := comp.Field(0)
-		if guidField.GuidHex() != reel.GUID {
-			continue
-		}
-		price := comp.Field(3).Val
-		if price != nil && price.Kind == proto.KindObj && price.FieldCount() > 0 {
-			quoteField := price.Field(0)
-			bodyQuote = int64(quoteField.U64())
-		}
-		break
 	}
-	if bodyQuote != 500 {
-		t.Fatalf("满磨损本体修理报价应为 500 银，实得 %d", bodyQuote)
+	if bodyCond != 0 {
+		t.Fatalf("满磨损本体行完好度应为 0，实得 %v", bodyCond)
 	}
 
 	c := &Ctx{
