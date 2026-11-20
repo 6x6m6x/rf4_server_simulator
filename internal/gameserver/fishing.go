@@ -2286,6 +2286,20 @@ func (s *Server) reloadMarineFishKeys(ctx context.Context) (int, error) {
 // 等不在表内（zubatka 反被归进淡水 small 组），今晚 2026-11-15 四次 f0=2 脱钩
 // 全部栽在这里；词表 marine 命中兜底静态库未收录的海鱼。marineFishKeys 为
 // nil（静态库不可用）时纯词表，行为与落表前一致。
+// isNorthSeaFish 严格判定是否为挪威海鱼种：只认静态库海图鱼种集合
+// （loc_alias level_012_north_sea → loc_fish），不用词表兜底，避免误伤淡水鱼。
+// 用于"挪威海鱼种水层不限制"这类按鱼种放行；海图集合未加载时不放行。
+func (s *Server) isNorthSeaFish(species string) bool {
+	if s == nil {
+		return false
+	}
+	sp := strings.ToLower(strings.TrimSpace(species))
+	s.marineFishMu.RLock()
+	hit := s.marineFishKeys != nil && s.marineFishKeys[sp]
+	s.marineFishMu.RUnlock()
+	return hit
+}
+
 func (s *Server) fishMarineGroupHit(species string) bool {
 	sp := strings.ToLower(strings.TrimSpace(species))
 	if s != nil {

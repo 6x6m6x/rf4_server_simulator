@@ -294,6 +294,11 @@ func (s *Server) fishLayerWeight(ctx context.Context, key string, c fishRollCont
 // 与"路亚比鱼深"两个方向，水面饵打底层鱼只走高斯尾巴（v4 区间收窄后
 // 仍有 ~0.27），是水面系上底鱼的根因之一；对称化后衰减与方向无关。
 func (s *Server) fishLayerWeightProfile(p fishEcologyProfile, c fishRollContext) float64 {
+	// 用户补丁：挪威海鱼种（海图鱼种集合）彻底不受水层限制——权重恒 1。
+	// 只解除水层这一维；食性、天气、时段、水深等其它生态规则全部照常。
+	if s.isNorthSeaFish(p.FishKey) {
+		return 1
+	}
 	target := s.rigWaterLayer(c)
 	lo, hi := p.LayerMin, p.LayerMax
 	if target >= lo-.08 && target <= hi+.08 {
