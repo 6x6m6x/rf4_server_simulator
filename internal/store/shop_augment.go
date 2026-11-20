@@ -232,6 +232,29 @@ func brandMatches(brand string, brands []string) bool {
 
 // augmentShopShelf 补齐货架，返回补齐后的货架与新增条数。
 func (d *DB) augmentShopShelf(ctx context.Context, def shopStoreDefinition, shelf []*ShopPrice) ([]*ShopPrice, int, error) {
+	// 用户补丁：工坊店(kind=2)上游货架为空 → 客户端"原件库房"全显示缺货。
+	// 代码层补一份全品类配件货架（不动静态库）；只在还没有配件行时补。
+	if def.Kind == 2 {
+		ws := d.workshopShelfFor(ctx, def)
+		if len(ws) > 0 {
+			have := map[string]bool{}
+			for _, p := range shelf {
+				if p != nil {
+					have[p.ItemID] = true
+				}
+			}
+			add := make([]*ShopPrice, 0, len(ws))
+			for _, p := range ws {
+				if !have[p.ItemID] {
+					add = append(add, p)
+				}
+			}
+			if len(add) > 0 {
+				out := append(append([]*ShopPrice{}, shelf...), add...)
+				return out, len(add), nil
+			}
+		}
+	}
 	if len(shelf) == 0 {
 		return shelf, 0, nil
 	}
