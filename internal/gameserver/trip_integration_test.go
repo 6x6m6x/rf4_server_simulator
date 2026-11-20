@@ -12,6 +12,7 @@ import (
 // 购票即启表 → 进图 capture 1/14 档案 → 用客户端公式算剩余。
 func TestTripCaptureSimulation(t *testing.T) {
 	srv, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	uid := int64(3910)
 	place := "level_018_moskitnoe"

@@ -63,6 +63,7 @@ func profileVouchers(t *testing.T, srv *Server, uid int64) []*proto.Value {
 
 func TestPlaceTripSilverPurchase(t *testing.T) {
 	srv, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	uid := int64(3901)
 	if _, err := srv.DB.EnsureProfile(ctx0, uid); err != nil {
@@ -113,6 +114,7 @@ func TestPlaceTripSilverPurchase(t *testing.T) {
 
 func TestTripTimerStartsOnEntry(t *testing.T) {
 	srv, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	uid := int64(3906)
 	place := "level_018_moskitnoe"
@@ -177,6 +179,7 @@ func TestTripTimerStartsOnEntry(t *testing.T) {
 
 func TestPlaceTripGoldPurchase(t *testing.T) {
 	srv, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	uid := int64(3902)
 	if _, err := srv.DB.EnsureProfile(ctx0, uid); err != nil {
@@ -206,6 +209,7 @@ func TestPlaceTripGoldPurchase(t *testing.T) {
 // 回归钉死：收录价 95 必须购票成功并按 95 金币百分位扣款。
 func TestPlaceTripGoldPurchaseNorthSea(t *testing.T) {
 	srv, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	uid := int64(3914)
 	if _, err := srv.DB.EnsureProfile(ctx0, uid); err != nil {
@@ -236,6 +240,7 @@ func TestPlaceTripGoldPurchaseNorthSea(t *testing.T) {
 
 func TestPlaceTripWrongPriceRejected(t *testing.T) {
 	srv, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	uid := int64(3903)
 	if _, err := srv.DB.EnsureProfile(ctx0, uid); err != nil {
@@ -258,6 +263,7 @@ func TestPlaceTripWrongPriceRejected(t *testing.T) {
 
 func TestPlaceTripPurchaseCap(t *testing.T) {
 	srv, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	uid := int64(3904)
 	place := "level_018_moskitnoe"
@@ -282,6 +288,7 @@ func TestPlaceTripPurchaseCap(t *testing.T) {
 
 func TestConsumeTripTimesOfflinePauseAndExpiry(t *testing.T) {
 	srv, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	uid := int64(3905)
 	place := "level_018_moskitnoe"
@@ -338,6 +345,7 @@ func TestConsumeTripTimesOfflinePauseAndExpiry(t *testing.T) {
 
 func TestTripDurationKVOverride(t *testing.T) {
 	srv, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	uid := int64(3907)
 	place := "level_018_moskitnoe"
@@ -385,6 +393,7 @@ func TestTripDurationKVOverride(t *testing.T) {
 
 func TestTripSessionClockCalibration(t *testing.T) {
 	srv, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	uid := int64(3908)
 	place := "level_018_moskitnoe"
@@ -431,6 +440,7 @@ func TestTripSessionClockCalibration(t *testing.T) {
 
 func TestTripPlaceDobMarked(t *testing.T) {
 	srv, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx := context.Background()
 	const uid = int64(3920)
 	if _, err := srv.DB.EnsureProfile(ctx, uid); err != nil {
@@ -468,4 +478,26 @@ func TestTripPlaceDobMarked(t *testing.T) {
 	if got := dobF1("level_012_north_sea"); got != 0 {
 		t.Fatalf("未购票凭证图 dob.f1 应为 0: %d", got)
 	}
+}
+
+// 用户补丁：临时关闭"钓鱼游购买隐藏"，验证原购买流程机制完整性。
+func enableTripPurchaseForTest(t *testing.T, srv *Server) {
+	t.Helper()
+	srv.tunMu.Lock()
+	if srv.tunCache == nil {
+		srv.tunCache = map[string]float64{}
+	}
+	old, had := srv.tunCache["trip_purchase_hidden"]
+	srv.tunCache["trip_purchase_hidden"] = 0
+	srv.tunAt = time.Now()
+	srv.tunMu.Unlock()
+	t.Cleanup(func() {
+		srv.tunMu.Lock()
+		if had {
+			srv.tunCache["trip_purchase_hidden"] = old
+		} else {
+			delete(srv.tunCache, "trip_purchase_hidden")
+		}
+		srv.tunMu.Unlock()
+	})
 }

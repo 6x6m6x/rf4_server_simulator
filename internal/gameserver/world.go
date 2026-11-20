@@ -509,6 +509,19 @@ var placeTripPrices = map[string]placeTripPrice{
 	"level_012_north_sea": {Silver: 139500, Gold: 95}, // 挪威海 1395 银（2026-11-05）/ 0.95 金（2026-11-11 23:52 实抓 gold=true price=95）
 }
 
+// 用户补丁：隐藏铜湖+挪威海钓鱼游购买页。
+// trip_purchase_hidden=1（默认）：这两地图价格视为 0（无购买价）+ 视为已购满 3 次，
+// 购买页不显示、3/38 购买直接拒绝。设 0 恢复原行为（供回归测试用）。
+var tripPurchaseHidden = map[string]bool{
+	"level_018_moskitnoe": true,
+	"level_012_north_sea": true,
+}
+
+// tripPurchaseHiddenNow 读开关：默认 1=隐藏；0=恢复原行为（回归测试用）。
+func (s *Server) tripPurchaseHiddenNow() bool {
+	return s.tunableF("trip_purchase_hidden", 1) == 1
+}
+
 // parsePlaceTripArgs 解析 3/38 请求 [地图 key, bool, 价格]。
 // bool 含义未确认，按购买界面"银币/金币"两个按钮理解为金币支付标记。
 func parsePlaceTripArgs(tree *proto.Value) (place string, gold bool, price int64) {
@@ -559,6 +572,12 @@ func hPlaceTripTx(ctx *Ctx) ([]byte, bool) {
 		ctx.ReplyFailure("System.InvalidOperationException", "钓鱼游购买参数无效")
 		return nil, true
 	}
+	// 用户补丁：铜湖/挪威海钓鱼游对所有人视为已购满3次，隐藏购买入口。
+	if tripPurchaseHidden[place] && srv.tripPurchaseHiddenNow() {
+		ctx.Log.Info("3/38 钓鱼游购买已隐藏", "place", place)
+		ctx.ReplyFailure("System.InvalidOperationException", "该钓鱼游购买次数已达上限")
+		return nil, true
+	}
 	// 票价必须整段走固定票价表，不能回落客户端报价：购票面板价格由客户端
 	// 本地静态数据渲染，是固定值——服务端按报价结算等于把定价权交给请求方，
 	// gold=true price=1 曾被按 1 金币成交（审查 P1 实测）。未收录地点与
@@ -602,6 +621,10 @@ func hPlaceTripTx(ctx *Ctx) ([]byte, bool) {
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		ctx.Log.Warn("3/38 读取钓鱼游状态失败", "place", place, "err", err)
 		return nil, false
+	}
+	// 用户补丁双保险：隐藏地点无论库里几次，都视为已购满 3 次。
+	if tripPurchaseHidden[place] && srv.tripPurchaseHiddenNow() {
+		purchases = tripMaxPurchases
 	}
 	if purchases >= tripMaxPurchases {
 		ctx.Log.Info("3/38 购买次数已达上限", "place", place, "purchases", purchases)

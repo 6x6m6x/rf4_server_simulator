@@ -12,6 +12,7 @@ import (
 
 func TestTripResponseHex(t *testing.T) {
 	srv, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	uid := int64(3911)
 	place := "level_018_moskitnoe"

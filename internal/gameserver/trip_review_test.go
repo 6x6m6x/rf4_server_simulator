@@ -69,6 +69,7 @@ func TestTravelLockedVoucherMapRejected(t *testing.T) {
 // 未实抓币种（票价 0 值）分支由 TestPlaceTripGoldPriceMissingRejected 单独覆盖。
 func TestPlaceTripPriceStrict(t *testing.T) {
 	srv, db := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx := context.Background()
 	const uid int64 = 3909
 	if _, err := db.EnsureProfile(ctx, uid); err != nil {
@@ -122,6 +123,7 @@ func TestPlaceTripPriceStrict(t *testing.T) {
 // 失去覆盖。临时清零铜湖金币价还原该分支：gold=true 必须拒绝且不扣款。
 func TestPlaceTripGoldPriceMissingRejected(t *testing.T) {
 	srv, db := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx := context.Background()
 	const uid int64 = 3915
 	if _, err := db.EnsureProfile(ctx, uid); err != nil {
@@ -157,6 +159,7 @@ func TestPlaceTripGoldPriceMissingRejected(t *testing.T) {
 // tripLevelLocked 对残留行必须判为锁定。
 func TestTripExpiryCompensationRevokesResidualAccess(t *testing.T) {
 	srv, db := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	const uid int64 = 3911
 	place := "level_018_moskitnoe"
@@ -193,6 +196,7 @@ func TestTripExpiryCompensationRevokesResidualAccess(t *testing.T) {
 // 买断与房屋照常放行。
 func TestTripLevelLockedRequiresTickingTrip(t *testing.T) {
 	srv, db := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	const uid int64 = 3912
 	place := "level_018_moskitnoe"

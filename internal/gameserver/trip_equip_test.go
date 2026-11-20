@@ -13,6 +13,7 @@ import (
 
 func TestTripEquipmentGrantAndRecall(t *testing.T) {
 	srv, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	uid := int64(3910)
 	place := "level_018_moskitnoe"
@@ -105,6 +106,7 @@ func TestTripEquipmentGrantAndRecall(t *testing.T) {
 	// 切到其他地图 → 该地图装备包回收（离图即收，重新进图再发）。
 	// 场景独立用例：上面三次购票已用满限购，这里换 uid 走完整进/出循环。
 	srv2, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv2)
 	ctxB := context.Background()
 	uidB := int64(3912)
 	placeB := "level_018_moskitnoe"
@@ -145,6 +147,7 @@ func TestTripEquipmentGrantAndRecall(t *testing.T) {
 func TestTripEquipmentNorthSeaBundle(t *testing.T) {
 	// 挪威海清单完整性：按件发放后全部落到物品定义。
 	srv, _ := newEconomyTxTestServer(t)
+	enableTripPurchaseForTest(t, srv)
 	ctx0 := context.Background()
 	uid := int64(3911)
 	place := "level_012_north_sea"
