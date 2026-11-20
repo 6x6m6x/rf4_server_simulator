@@ -3,7 +3,6 @@ package gameserver
 import (
 	"context"
 	"testing"
-
 )
 
 // TestWorkshopHidesReelBodyAsDevice：用户补丁——改装非原件后出现的"装置"栏

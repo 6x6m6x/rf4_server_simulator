@@ -16,8 +16,8 @@ import (
 
 // 用户补丁：钓鱼游购买页隐藏（f22 虚拟注入 buyout）。
 const (
-	tripHiddenPlaceCopper    = "level_018_moskitnoe" // 铜湖
-	tripHiddenPlaceNorthSea  = "level_012_north_sea" // 挪威海
+	tripHiddenPlaceCopper   = "level_018_moskitnoe" // 铜湖
+	tripHiddenPlaceNorthSea = "level_012_north_sea" // 挪威海
 )
 
 // tripPurchaseHiddenNow 读开关：默认 1=隐藏；0=恢复原行为（回归测试用）。
