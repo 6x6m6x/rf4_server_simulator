@@ -3114,6 +3114,12 @@ func (s *Server) onRodBiteTimerTicket(uid int64, st *FishState, ticket fishingTi
 		x, z, hasPos = st.PosX, st.PosZ, st.HasPos
 	}
 	probability := s.biteProbabilityForLoc(st.Loc)
+	// 用户补丁：海洋钓组（rigType 50-60，rig_Marine*，"海洋钓鱼"技能内可检索）
+	// 是挪威海专用（官服行为，服务端控制）。非海图时开口率归零 → 走下方既有
+	// "鱼口未命中，继续等待"分支：不咬口、不结算、无异常包；其它钓组不受影响。
+	if marineBlockedOnLevel(st.RigType, s.currentLevel(uid)) {
+		probability = 0
+	}
 	if s.tunableF("fish_bait_rules_enabled", 0) == 1 || s.tunableF("fish_weather_enabled", 0) == 1 {
 		probability = math.Min(.95, probability)
 	}
