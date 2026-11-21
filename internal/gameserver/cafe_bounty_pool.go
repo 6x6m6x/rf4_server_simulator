@@ -22,7 +22,7 @@ import (
 // 每个槽位预生成多条候选（variant），运行时按现实时间周期轮换，同一周期内稳定。
 
 const (
-	cafePoolVariants   = 4   // 每槽位候选条数
+	cafePoolVariants   = 4     // 每槽位候选条数
 	cafeBountyCapCents = 10000 // 巨物补贴后封顶 100 金
 )
 
@@ -248,8 +248,8 @@ func giantSubsidyFor(blueG int64, subsidies []store.CafeSubsidy, rarity float64)
 
 type poolFish struct {
 	store.CafeLocFish
-	rarity float64
-	isRare bool
+	rarity  float64
+	isRare  bool
 	isGiant bool
 }
 
