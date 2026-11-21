@@ -232,3 +232,26 @@ func cafeFishLevelTx(ctx context.Context, tx *sql.Tx, loc string) (string, error
 	}
 	return level, err
 }
+
+// ClearCafeOrders 清空全部玩家的当前咖啡厅订单与交付回执。
+// 用于后台「清理并刷新全部订单」：清掉旧批次，配合重建候选池让所有人下次
+// 打开咖啡厅时立即拿到新订单。运营数据，不涉及玩家存档/货币。
+func (d *DB) ClearCafeOrders(ctx context.Context) (int64, error) {
+	tx, err := d.SQL.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	// 先删子表（外键引用），再删订单。
+	if _, err := tx.ExecContext(ctx, `DELETE FROM cafe_order_completion`); err != nil {
+		return 0, err
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM cafe_order`)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}

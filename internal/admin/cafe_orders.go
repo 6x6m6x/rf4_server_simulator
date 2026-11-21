@@ -224,3 +224,12 @@ func (s *Server) handleCafePoolRegenerate(w http.ResponseWriter, r *http.Request
 func (s *Server) pushCafeReload(r *http.Request) {
 	_ = s.db.QueuePush(r.Context(), mustJSON(map[string]any{"op": "reload_cafe_config"}))
 }
+
+// handleCafeOrdersClear 清空所有玩家的当前咖啡厅订单并立刻重建候选池。
+// 通过管理队列交给 gameserver 同步执行：清空订单表 → 重建候选池，
+// 玩家下次打开咖啡厅即为全新订单（无需等订单自然过期）。
+func (s *Server) handleCafeOrdersClear(w http.ResponseWriter, r *http.Request) {
+	_ = s.db.QueuePush(r.Context(), mustJSON(map[string]any{"op": "clear_cafe_orders"}))
+	_ = s.db.AuditLogWrite(r.Context(), adminOf(r), "cafe_orders_clear", "", "")
+	writeJSON(w, map[string]any{"ok": true})
+}

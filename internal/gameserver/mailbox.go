@@ -1082,6 +1082,25 @@ func (s *Server) execAdminCmd(cmd *AdminCommand) {
 	case "reload_bait_rules":
 		s.invalidateBaitOverrides()
 		s.log.Info("管理指令：鱼饵规则覆盖已刷新")
+	case "clear_cafe_orders":
+		// 后台「清理并刷新全部订单」：先清掉所有玩家当前订单，再立刻重建候选池。
+		// 玩家下次打开咖啡厅即拿到全新订单，无需等旧订单自然过期。
+		n, cerr := s.DB.ClearCafeOrders(ctx)
+		if cerr != nil {
+			s.log.Warn("管理指令：清空咖啡厅订单失败", "err", cerr)
+		} else {
+			s.log.Info("管理指令：已清空咖啡厅订单", "orders", n)
+		}
+		counts, rerr := s.RegenerateCafeBountyPool(ctx)
+		if rerr != nil {
+			s.log.Warn("管理指令：清理后重建候选池失败", "err", rerr)
+		} else {
+			total := 0
+			for _, c := range counts {
+				total += c
+			}
+			s.log.Info("管理指令：清理后候选池已重建", "rows", total)
+		}
 	case "reload_cafe_config", "regenerate_cafe_pool":
 		// 后台改了悬赏白名单/金币范围/巨物补贴后，重建全部水域候选池。
 		counts, err := s.RegenerateCafeBountyPool(ctx)
