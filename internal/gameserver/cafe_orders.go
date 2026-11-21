@@ -61,8 +61,15 @@ func cafeRandom(key string) *rand.Rand {
 	return rand.New(rand.NewSource(int64(binary.LittleEndian.Uint64(h[:8]))))
 }
 
-// cafeTemplates 使用已核对的订单组合和奖励。
+// cafeTemplates 优先从预生成候选池产出订单；池未生成时回退旧逻辑，保证迁移期可用。
 func (s *Server) cafeTemplates(ctx context.Context, level string, now int64) ([]store.CafeOrderTemplate, error) {
+	tpls, err := s.cafeTemplatesFromPool(ctx, level, now)
+	if err != nil {
+		return nil, err
+	}
+	if len(tpls) > 0 {
+		return tpls, nil
+	}
 	return s.calibratedCafeTemplates(ctx, level, now)
 }
 

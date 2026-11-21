@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "note": "咖啡厅悬赏鱼白名单：rare 稀有鱼 / giant 巨物。静态配置，决定候选池的稀有/巨物分类与巨物补贴，后台不再编辑。按用户 2026-11-20 口径：补 3 种七鳃鳗，其余四种暂不加入。",
+  "fish": [
+    {"fish_key": "c_lamprey",  "category": "rare",  "name_zh": "里海七鳃鳗", "note": "阿赫图巴河"},
+    {"fish_key": "u_lamprey",  "category": "rare",  "name_zh": "乌克兰七鳃鳗", "note": "北顿涅茨河"},
+    {"fish_key": "fe_lamprey", "category": "rare",  "name_zh": "七鳃鳗", "note": "亚马河"},
+    {"fish_key": "valyok",     "category": "rare",  "name_zh": "真柱白鲑", "note": "亚马河 / 下通古斯卡河"},
+    {"fish_key": "lophius_p",  "category": "rare",  "name_zh": "钓鮟鱇", "note": "挪威海"},
+    {"fish_key": "himant_g",   "category": "rare",  "name_zh": "多指鞭冠鮟鱇", "note": "挪威海"},
+
+    {"fish_key": "cetorhinus_m", "category": "giant", "name_zh": "姥鲨", "note": "挪威海"},
+    {"fish_key": "x_gladius",    "category": "giant", "name_zh": "剑鱼", "note": "挪威海"},
+    {"fish_key": "r_sturgeon",   "category": "giant", "name_zh": "俄罗斯鲟", "note": "阿赫图巴河 / 北顿涅茨河"},
+    {"fish_key": "osetr_balt",   "category": "giant", "name_zh": "波罗的海鲟鱼", "note": "拉多加湖 / 拉多加湖群岛"},
+    {"fish_key": "osetr_ship",   "category": "giant", "name_zh": "裸腹鲟", "note": "阿赫图巴河"},
+    {"fish_key": "st_sturgeon",  "category": "giant", "name_zh": "闪光鲟", "note": "阿赫图巴河"},
+    {"fish_key": "p_sturgeon",   "category": "giant", "name_zh": "波斯鲟", "note": "阿赫图巴河"},
+    {"fish_key": "zs_sturgeon",  "category": "giant", "name_zh": "东西伯利亚鲟", "note": "下通古斯卡河"},
+    {"fish_key": "sterlet",      "category": "giant", "name_zh": "小体鲟", "note": "阿赫图巴河 / 白河"},
+    {"fish_key": "syb_sterlet",  "category": "giant", "name_zh": "西伯利亚小体鲟", "note": "下通古斯卡河"},
+    {"fish_key": "beluga",       "category": "giant", "name_zh": "欧洲鳇", "note": "阿赫图巴河"},
+    {"fish_key": "kaluga",       "category": "giant", "name_zh": "达氏鳇", "note": "亚马河"},
+    {"fish_key": "w_catfish",    "category": "giant", "name_zh": "欧洲六须鲇", "note": "多图"}
+  ]
+}

@@ -40,6 +40,9 @@ var RuntimeTables = []string{
 	"fish_weight_override", "fish_weight_base", "fish_bite_setting", "fish_grade_lines", "skill_link",
 	"fish_ecology", "skill_fish_effect_def", "skill_cast_effect_def", "hook_bite_profile", "fish_bait_override",
 	"fish_zone", "fish_zone_fish",
+	// 咖啡厅悬赏配置与预生成候选池：运营数据，后台可改，不属于玩家存档。
+	"cafe_bounty_band", "cafe_bounty_fish", "cafe_giant_subsidy", "cafe_bounty_pool",
+	"cafe_order_quantity", "cafe_slot_period", "cafe_bounty_blacklist", "cafe_slot_mix",
 	// rf4records 官方周纪录捕获表：tools/fetch_rf4records.py（外部证据管道）写入，
 	// 运营数据，非静态资料也非玩家存档。
 	"rf4records_catch",

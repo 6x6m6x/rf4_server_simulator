@@ -157,13 +157,16 @@ func TestCafeNativeFlowPaysAndPushesRemoval(t *testing.T) {
 		t.Fatalf("移除推送错误: %+v %v", push, err)
 	}
 	p1, _ := db.GetProfile(ctx, uid)
-	if p1.Silver != p0.Silver+reward {
-		t.Fatal("钱包未同步")
+	if p1.Gold != p0.Gold+reward {
+		t.Fatal("金币钱包未同步")
+	}
+	if p1.Silver != p0.Silver {
+		t.Fatal("赏金不应再发银币")
 	}
 	fc.SendRequest(802, 20, 4, body...)
 	fc.WaitResponse(3 * time.Second)
 	p2, _ := db.GetProfile(ctx, uid)
-	if p2.Silver != p1.Silver {
+	if p2.Gold != p1.Gold {
 		t.Fatal("网络重试重复付款")
 	}
 	fc.SendRequest(803, 20, 3, req...)

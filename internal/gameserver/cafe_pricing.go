@@ -112,6 +112,11 @@ func (s *Server) calibratedCafeTemplates(ctx context.Context, level string, now 
 	if err != nil {
 		return nil, err
 	}
+	// 金币梯度：按本图鱼种捕获权重计算稀有度，供赏金分档插值使用。
+	rarityMap, err := CafeRarityMap(ctx, s.DB, level)
+	if err != nil {
+		return nil, err
+	}
 	for _, fish := range roster {
 		parent, isVariant := cafeVariantParents[fish.FishKey]
 		if !isVariant {
@@ -177,7 +182,7 @@ func (s *Server) calibratedCafeTemplates(ctx context.Context, level string, now 
 			pool = buckets[8]
 		}
 		row := pool[r.Intn(len(pool))]
-		weight, qty, reward := row.MinWeightG, row.Quantity, cafeReward(r, row)
+		weight, qty := row.MinWeightG, row.Quantity
 		if slot == 9 && r.Intn(4) == 0 {
 			rarePool := variants
 			if len(rarePool) == 0 {
@@ -189,14 +194,14 @@ func (s *Server) calibratedCafeTemplates(ctx context.Context, level string, now 
 				row.Species = d.species
 				weight = d.lo + r.Int63n(d.hi-d.lo+1)
 				qty = 1
-				reward, err = cafeScaledReward(cafeReward(r, d.base), d.base.MinWeightG, weight)
-				if err != nil {
-					return nil, err
-				}
 			}
 		}
 		v, t, b := s.DB.GradeLines(ctx, row.Species)
-		out = append(out, store.CafeOrderTemplate{Species: row.Species, MinWeightG: weight, Quantity: qty, RewardCents: reward, OfferSize: gradeFromLines(v, t, b, weight), PeriodSeconds: period, PhaseSeconds: phase, PricingVersion: cafeRewards.Version})
+		grade := gradeFromLines(v, t, b, weight)
+		rarity := rarityMap[row.Species]
+		baseG := cafeBandBaseG(grade, v, t, b)
+		_, reward := CafeGoldBounty(rarity, grade, weight, baseG)
+		out = append(out, store.CafeOrderTemplate{Species: row.Species, MinWeightG: weight, Quantity: qty, RewardCents: reward, OfferSize: grade, PeriodSeconds: period, PhaseSeconds: phase, PricingVersion: CafeGoldPricingVersion})
 	}
 	return out, nil
 }

@@ -103,7 +103,7 @@ func TestCafeSubmitAtomicAndIdempotent(t *testing.T) {
 	assertCount(t, db, `SELECT COUNT(*) FROM keepnet_items`, 2)
 	assertCount(t, db, `SELECT COUNT(*) FROM txn WHERE kind='cafe_order'`, 0)
 	p1, _ := db.GetProfile(ctx, 1)
-	if p0.Silver != p1.Silver {
+	if p0.Gold != p1.Gold {
 		t.Fatal("失败留下了收入")
 	}
 	if _, err := db.SQL.Exec(`DROP TRIGGER fail_cafe`); err != nil {
@@ -115,7 +115,7 @@ func TestCafeSubmitAtomicAndIdempotent(t *testing.T) {
 	}
 	assertCount(t, db, `SELECT COUNT(*) FROM keepnet_items`, 0)
 	p1, _ = db.GetProfile(ctx, 1)
-	if p1.Silver != p0.Silver+1000 {
+	if p1.Gold != p0.Gold+1000 {
 		t.Fatal("收入不符")
 	}
 	result, err = db.SubmitCafeOrder(ctx, 1, "cafe1", order.ID, guids, 112)
@@ -124,7 +124,7 @@ func TestCafeSubmitAtomicAndIdempotent(t *testing.T) {
 	}
 	assertCount(t, db, `SELECT COUNT(*) FROM txn WHERE kind='cafe_order'`, 1)
 	p2, _ := db.GetProfile(ctx, 1)
-	if p2.Silver != p1.Silver {
+	if p2.Gold != p1.Gold {
 		t.Fatal("重复付款")
 	}
 	orders := cafeTestOrders(t, db, 112)
@@ -270,7 +270,7 @@ func TestCafePricingMigrationKeepsOldQuotesReceiptsAndWallet(t *testing.T) {
 		t.Fatalf("旧回执失效: %+v %v", res, err)
 	}
 	p1, _ := db.GetProfile(ctx, 1)
-	if p0.Silver != p1.Silver {
+	if p0.Gold != p1.Gold {
 		t.Fatal("升级或重试改了钱包")
 	}
 }

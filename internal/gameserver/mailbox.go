@@ -896,6 +896,14 @@ func (s *Server) StartAdminSubscriber(db *store.DB, stop <-chan struct{}) {
 	if db == nil {
 		return
 	}
+	// 首次启动（迁移后候选池为空）自动生成一次，避免首日仍走旧 JSON 逻辑。
+	if levels, err := db.CafePoolLevels(context.Background()); err == nil && len(levels) == 0 {
+		if _, err := s.RegenerateCafeBountyPool(context.Background()); err != nil {
+			s.log.Warn("咖啡厅悬赏候选池首次生成失败，将回退旧逻辑", "err", err)
+		} else {
+			s.log.Info("咖啡厅悬赏候选池首次生成完成")
+		}
+	}
 	go func() {
 		ctx := context.Background()
 		ticker := time.NewTicker(2 * time.Second)
@@ -1074,6 +1082,18 @@ func (s *Server) execAdminCmd(cmd *AdminCommand) {
 	case "reload_bait_rules":
 		s.invalidateBaitOverrides()
 		s.log.Info("管理指令：鱼饵规则覆盖已刷新")
+	case "reload_cafe_config", "regenerate_cafe_pool":
+		// 后台改了悬赏白名单/金币范围/巨物补贴后，重建全部水域候选池。
+		counts, err := s.RegenerateCafeBountyPool(ctx)
+		if err != nil {
+			s.log.Warn("管理指令：咖啡厅悬赏候选池重建失败", "err", err)
+		} else {
+			total := 0
+			for _, n := range counts {
+				total += n
+			}
+			s.log.Info("管理指令：咖啡厅悬赏候选池已重建", "waters", len(counts), "rows", total)
+		}
 	case "reload_fish_zones":
 		s.fishZoneMu.Lock()
 		s.fishZoneCache = nil
