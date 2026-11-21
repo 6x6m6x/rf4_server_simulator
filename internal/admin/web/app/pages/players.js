@@ -1,6 +1,6 @@
 // 玩家：左边找人，右边看和改这个人的一切。
 import {
-  h, api, apiList, post, icon, toast, errText, pageHead, section, callout, badge, empty, btn, loading, Form, savebar, setLeaveGuard,
+  h, api, apiList, post, BASE, getToken, icon, toast, errText, pageHead, section, callout, badge, empty, btn, loading, Form, savebar, setLeaveGuard,
   tabs, searchBox, debounce, confirmDialog, dialog, fmt, timeText, relTime, navigate, segmented, hideSavebar, setPageCleanup, replaceHash,
 } from '../core.js';
 import { itemIcon } from '../widgets.js';
@@ -94,10 +94,44 @@ function playerDetail(p, tab) {
 // ---------- 概况 ----------
 function profile(p, reload, setDirty) {
   const form = new Form();
+  // 用户补丁（旧后台 UI 迁移）：头像 URL 字段 + 本地图片上传。
+  const avatarField = form.field({ key: 'avatar', label: '头像', kind: 'string' }, p.avatar || '');
+  avatarField.input = h('input', {
+    type: 'text', class: 'input', value: avatarField.original, placeholder: 'https://... 或上传后自动填入',
+    style: { flex: '1', minWidth: '180px' }, oninput: () => form.refresh(),
+  });
+  const avatarImg = h('img', {
+    src: p.avatar || '', alt: '', style: { width: '44px', height: '44px', borderRadius: '8px', objectFit: 'cover', background: 'var(--surface-4)', display: p.avatar ? '' : 'none' },
+    onerror: (e) => { e.target.style.display = 'none'; },
+  });
+  const avatarFile = h('input', {
+    type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', style: { display: 'none' },
+    onchange: async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      if (f.size > 8 * 1024 * 1024) { toast('图片不能超过 8MB', 'bad'); return; }
+      const fd = new FormData(); fd.append('uid', String(p.uid)); fd.append('file', f);
+      try {
+        const r = await fetch(BASE + '/api/players/avatar', { method: 'POST', headers: { Authorization: 'Bearer ' + getToken() }, body: fd });
+        const txt = await r.text(); let data = {};
+        try { data = txt ? JSON.parse(txt) : {}; } catch (_) { data = {}; }
+        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+        avatarField.input.value = data.avatar || '';
+        avatarImg.src = data.avatar || ''; avatarImg.style.display = data.avatar ? '' : 'none';
+        form.refresh(); toast('头像已上传并生效');
+      } catch (err) { toast(errText(err), 'bad'); }
+      e.target.value = '';
+    },
+  });
+  const avatarRow = h('div', { class: 'row', style: { gap: '8px', alignItems: 'center', flexWrap: 'wrap' } },
+    avatarImg, avatarField.input, avatarFile,
+    btn('上传图片', () => avatarFile.click(), 'sm'));
   savebar(form, {
     onSave: async (v) => {
       const body = { uid: p.uid, name: form.value('name'), level: +form.value('level'), xp: +form.value('xp'),
         silver: Math.round(+form.value('silver') * 100), gold: Math.round(+form.value('gold') * 100), bank: Math.round(+form.value('bank') * 100) };
+      // 用户补丁（旧后台 UI 迁移）：头像 URL 随档案一起保存。
+      if (avatarField) body.avatar = avatarField.input.value.trim();
       const m = +memberField.input.value;
       const exp = m === 1 && expInput.value ? Math.floor(new Date(expInput.value).getTime() / 1000) : 0;
       if ('membership' in v || 'membership_exp' in v) {
@@ -126,6 +160,7 @@ function profile(p, reload, setDirty) {
   return h('div', { class: 'stack', style: { paddingTop: '4px' } },
     h('div', {},
       h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '4px 0 4px' }, text: '角色' }),
+      h('div', { class: 'field', style: { marginBottom: '6px' } }, h('label', { text: '头像（图片 URL 或本地上传）' }), avatarRow),
       form.row({ key: 'name', label: '昵称', kind: 'string', required: true }, p.name),
       form.row({ key: 'level', label: '等级', kind: 'int', min: 1, max: 58, unit: '级' }, p.level),
       form.row({ key: 'xp', label: '累计经验', kind: 'int', min: 0, help: '等级和经验要对得上，否则游戏里经验条会显示异常。' }, p.xp)),
