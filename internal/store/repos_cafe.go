@@ -112,7 +112,7 @@ func (d *DB) GetCafeOrders(ctx context.Context, uid int64, scene, level string, 
 	return orders, nil
 }
 
-// SubmitCafeOrder 原子扣鱼、支付银币并保存交付回执；同一玩家同单只支付一次。
+// SubmitCafeOrder 原子扣鱼、支付金币并保存交付回执；同一玩家同单只支付一次。
 func (d *DB) SubmitCafeOrder(ctx context.Context, uid int64, scene, orderID string, fishGUIDs []string, now int64) (*CafeOrderSubmitResult, error) {
 	scene, orderID = strings.TrimSpace(scene), normalizeMarketOfferGUID(orderID)
 	if uid <= 0 || scene == "" || orderID == "" || now < 0 {
@@ -181,11 +181,11 @@ func (d *DB) SubmitCafeOrder(ctx context.Context, uid int64, scene, orderID stri
 		}
 		removed = append(removed, guid)
 	}
-	var silver int64
-	if err := tx.QueryRowContext(ctx, `SELECT silver FROM profile WHERE uid=?`, uid).Scan(&silver); err != nil {
+	var gold int64
+	if err := tx.QueryRowContext(ctx, `SELECT gold FROM profile WHERE uid=?`, uid).Scan(&gold); err != nil {
 		return nil, err
 	}
-	if silver > math.MaxInt64-order.RewardCents {
+	if gold > math.MaxInt64-order.RewardCents {
 		return nil, ErrCafeOrderInvalid
 	}
 	for _, guid := range removed {
@@ -197,10 +197,10 @@ func (d *DB) SubmitCafeOrder(ctx context.Context, uid int64, scene, orderID stri
 			return nil, ErrCafeOrderFishMismatch
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE profile SET silver=silver+?,updated_ts=? WHERE uid=?`, order.RewardCents, float64(now), uid); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE profile SET gold=gold+?,updated_ts=? WHERE uid=?`, order.RewardCents, float64(now), uid); err != nil {
 		return nil, err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO txn(uid,ts,kind,guid,silver_delta,gold_delta,note) VALUES(?,?,'cafe_order',?,?,0,?)`, uid, float64(now), order.ID, order.RewardCents, fmt.Sprintf("cafe %s", scene)); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO txn(uid,ts,kind,guid,silver_delta,gold_delta,note) VALUES(?,?,'cafe_order',?,0,?,?)`, uid, float64(now), order.ID, order.RewardCents, fmt.Sprintf("cafe %s", scene)); err != nil {
 		return nil, err
 	}
 	raw, err := json.Marshal(removed)

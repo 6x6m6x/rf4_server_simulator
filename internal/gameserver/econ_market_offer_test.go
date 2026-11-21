@@ -72,8 +72,8 @@ func TestCafeSellOfferPaysOnceAndRejectsDoubleSale(t *testing.T) {
 	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM txn WHERE uid=?`, uid).Scan(&txnN); err != nil {
 		t.Fatal(err)
 	}
-	if p1.Silver != p0.Silver+1000 || txnN != 1 {
-		t.Fatalf("20/4 应一次性付款: silver %d->%d txn=%d", p0.Silver, p1.Silver, txnN)
+	if p1.Gold != p0.Gold+1000 || txnN != 1 {
+		t.Fatalf("20/4 应一次性付款: gold %d->%d txn=%d", p0.Gold, p1.Gold, txnN)
 	}
 
 	// 客户端重试同一次交付：不得重复付款，也不得报错。
@@ -127,7 +127,7 @@ func TestCafeSellOfferPaysOnceAndRejectsDoubleSale(t *testing.T) {
 	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM txn WHERE uid=? AND kind='sell_fish'`, uid).Scan(&txnN); err != nil {
 		t.Fatal(err)
 	}
-	if p2.Silver != p0.Silver+1000 || keepN != 0 || txnN != 0 {
-		t.Fatalf("20/2 冲突后状态被污染: silver=%d keep=%d sell_txn=%d", p2.Silver, keepN, txnN)
+	if p2.Gold != p0.Gold+1000 || keepN != 0 || txnN != 0 {
+		t.Fatalf("20/2 冲突后状态被污染: gold=%d keep=%d sell_txn=%d", p2.Gold, keepN, txnN)
 	}
 }
