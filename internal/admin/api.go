@@ -136,6 +136,7 @@ func NewServer(cfg config.Admin, db *store.DB, log logger, webFS fs.FS) *Server 
 	mux.HandleFunc("POST /api/cafe/period", auth(s.handleCafePeriodSet))
 	mux.HandleFunc("GET /api/cafe/pool", auth(s.handleCafePool))
 	mux.HandleFunc("POST /api/cafe/pool/regenerate", auth(s.handleCafePoolRegenerate))
+	mux.HandleFunc("POST /api/cafe/orders/clear", auth(s.handleCafeOrdersClear))
 	mux.HandleFunc("GET /api/audit", auth(s.handleAudit))
 	mux.HandleFunc("GET /api/about", auth(s.handleAbout))
 	mux.HandleFunc("GET /api/release-notes", auth(s.handleReleaseNotes))
