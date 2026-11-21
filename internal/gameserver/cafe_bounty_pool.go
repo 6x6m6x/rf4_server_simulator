@@ -273,15 +273,34 @@ func buildPoolForLevel(ctx context.Context, db *store.DB, level, loc string, cfg
 	// 必须有完整三线才能作为候选（档位线即重量要求）。
 	usable := make([]poolFish, 0, len(fishes))
 	rarityMap := rarityFromCatches(fishes)
+	// 用户补丁：鱼种档位线兜底。老玩家库里沃尔霍夫河(level_005_volhov)、
+	// 北顿涅茨河(level_013_sev_don)部分鱼缺 fish_grade_lines，原逻辑整条剔除，
+	// 若整图可用鱼为零则 buildPoolForLevel 报错、RegenerateCafeBountyPool 整体中断，
+	// 这些水域就永远没有候选池、咖啡厅没有订单。
+	// 兜底：缺线的鱼按同图其它鱼线的中位数补齐；整图无参考线才用全局默认。
+	type gradeLine struct{ q, t, b int64 }
+	lines := make([]gradeLine, 0, len(fishes))
+	for _, f := range fishes {
+		if f.QualifiedG > 0 && f.TrophyG > 0 && f.BlueG > 0 {
+			lines = append(lines, gradeLine{f.QualifiedG, f.TrophyG, f.BlueG})
+		}
+	}
+	fallback := gradeLine{500, 3000, 5000} // 全局默认：合格/奖杯/蓝冠(g)
+	if len(lines) > 0 {
+		sort.Slice(lines, func(i, j int) bool { return lines[i].q < lines[j].q })
+		fallback = lines[len(lines)/2]
+	}
 	for _, f := range fishes {
 		if blocked[f.FishKey] {
 			continue
 		}
-		if f.QualifiedG <= 0 || f.TrophyG <= 0 || f.BlueG <= 0 {
-			continue
+		q, t, b := f.QualifiedG, f.TrophyG, f.BlueG
+		if q <= 0 || t <= 0 || b <= 0 {
+			q, t, b = fallback.q, fallback.t, fallback.b
 		}
 		cat := whitelist[f.FishKey].Category
 		pf := poolFish{CafeLocFish: f, rarity: rarityMap[f.FishKey]}
+		pf.QualifiedG, pf.TrophyG, pf.BlueG = q, t, b
 		pf.isGiant = cat == "giant"
 		pf.isRare = cat == "rare" || pf.isGiant || pf.rarity >= cafeRareRarity
 		usable = append(usable, pf)
@@ -445,16 +464,29 @@ func (s *Server) RegenerateCafeBountyPool(ctx context.Context) (map[string]int, 
 		return nil, err
 	}
 	counts := make(map[string]int, len(aliases))
+	var firstErr error
 	for _, level := range aliases {
 		loc := s.DB.ResolveStatLoc(ctx, level)
 		rows, err := buildPoolForLevel(ctx, s.DB, level, loc, cfg)
 		if err != nil {
-			return nil, err
+			// 用户补丁：单水域生成失败不中断整体。原逻辑任一图报错就整体 return，
+			// 排在出错图之后的沃尔霍夫河/北顿涅茨河就永远没池、没咖啡厅订单。
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
 		if err := s.DB.CafeBountyPoolReplace(ctx, level, rows); err != nil {
-			return nil, err
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
 		counts[level] = len(rows)
+	}
+	// 单水域失败不阻断其它水域；错误仅记录，供调用方统计已完成的水域。
+	if firstErr != nil && s != nil && s.log != nil {
+		s.log.Warn("咖啡厅候选池部分水域重建失败", "err", firstErr, "ok_waters", len(counts))
 	}
 	return counts, nil
 }
