@@ -199,6 +199,10 @@ func TestExplicitRigTypeIsNotOverwrittenByCompatibilityInference(t *testing.T) {
 }
 
 func TestWearPersistsColumnFieldsAndVersion(t *testing.T) {
+	// 用户补丁：临时关闭不磨损开关，验证上游鱼钩磨损版本戳机制。
+	oldWear := noWearAll
+	noWearAll = false
+	defer func() { noWearAll = oldWear }()
 	t.Parallel()
 	srv, db := newRigTestServer(t)
 	ctx := context.Background()
@@ -246,7 +250,8 @@ func TestWearPersistsColumnFieldsAndVersion(t *testing.T) {
 		t.Fatalf("主线未磨损，版本戳不应变化: %d -> %d", lineVerBefore, gotVer)
 	}
 	hookFieldsAfter, _ := FieldsFromJSON(hookAfter.FieldsJSON)
-	if gotVer := u64Of(hookFieldsAfter[hookVerIdx].Num); gotVer <= hookVerBefore {
-		t.Fatalf("鱼钩磨损后版本戳应严格递增: %d -> %d", hookVerBefore, gotVer)
+	// 用户补丁：鱼钩恒不磨损（noWearAmount 对 hook 归零不随开关变化），版本戳应保持不变。
+	if gotVer := u64Of(hookFieldsAfter[hookVerIdx].Num); gotVer != hookVerBefore {
+		t.Fatalf("用户补丁：鱼钩不磨损时版本戳应不变: %d -> %d", hookVerBefore, gotVer)
 	}
 }

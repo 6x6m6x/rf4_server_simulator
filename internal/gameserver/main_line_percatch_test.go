@@ -8,6 +8,10 @@ import (
 )
 
 func TestCatchSettlementDoesNotWearMainLine(t *testing.T) {
+	// 用户补丁：全件不磨损会让竿本体也不磨损；临时关闭开关验证上游磨损机制完整性。
+	oldWear := noWearAll
+	noWearAll = false
+	defer func() { noWearAll = oldWear }()
 	srv, db := newRigTestServer(t)
 	ctx := context.Background()
 	const uid = int64(1000001)
