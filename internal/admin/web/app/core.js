@@ -54,6 +54,8 @@ export const ICONS = {
   hook: '<path d="M15 3v10a6 6 0 1 1-12 0V9"/><path d="M15 3l3 3-3 3"/>',
   sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1.5 14h5M9.5 8h5M17.5 16h5"/>',
   store: '<path d="M3 9h18l-1.5-5h-15L3 9Z"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/>',
+  // 热咖啡：带把手的杯子 + 杯口上方上升的热气（咖啡厅导航专用，勿与商店 store 混用）
+  coffee: '<path d="M4 11h12l-1.4 9H5.4L4 11Z"/><path d="M16 13.5h1.8a2.2 2.2 0 0 1 0 4.4H16"/><path d="M8 9.5c-1.3-1.4 1.3-2.8 0-4.2"/><path d="M12.5 9.5c-1.3-1.4 1.3-2.8 0-4.2"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
   doc: '<path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7M9 19h4"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/>',
