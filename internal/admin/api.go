@@ -84,6 +84,11 @@ func NewServer(cfg config.Admin, db *store.DB, log logger, webFS fs.FS) *Server 
 	mux.HandleFunc("GET /api/players/records", auth(s.handlePlayerRecords))
 	mux.HandleFunc("POST /api/players/records", auth(s.handlePlayerRecordsSave))
 	mux.HandleFunc("POST /api/players/avatar", auth(s.handlePlayerAvatarUpload))
+	// 玩家密码 / IP 绑定 / 彻底删除（实现见 features_extra.go）。
+	mux.HandleFunc("POST /api/players/password", auth(s.handlePlayerPasswordSet))
+	mux.HandleFunc("GET /api/players/ip-bindings", auth(s.handleIPBindingsList))
+	mux.HandleFunc("POST /api/players/ip-binding", auth(s.handleIPBindingSet))
+	mux.HandleFunc("POST /api/players/delete", auth(s.handlePlayerDelete))
 	mux.HandleFunc("GET /avatars/", s.handleAvatarFile)
 	mux.HandleFunc("POST /api/players/membership", auth(s.handlePlayerMembership))
 	mux.HandleFunc("POST /api/players/grant", auth(s.handleGrantItem))
@@ -125,6 +130,10 @@ func NewServer(cfg config.Admin, db *store.DB, log logger, webFS fs.FS) *Server 
 	mux.HandleFunc("POST /api/fish/zones", auth(s.handleFishZoneSave))
 	mux.HandleFunc("POST /api/fish/zones/delete", auth(s.handleFishZoneDelete))
 	mux.HandleFunc("POST /api/mail/send", auth(s.handleMailSend))
+	// 邮件模板（实现见 features_extra.go）。
+	mux.HandleFunc("GET /api/mail/templates", auth(s.handleMailTemplateList))
+	mux.HandleFunc("POST /api/mail/template/save", auth(s.handleMailTemplateSave))
+	mux.HandleFunc("POST /api/mail/template/delete", auth(s.handleMailTemplateDelete))
 	mux.HandleFunc("GET /api/cafe/config", auth(s.handleCafeConfig))
 	mux.HandleFunc("POST /api/cafe/band", auth(s.handleCafeBandSet))
 	mux.HandleFunc("GET /api/cafe/fish/search", auth(s.handleCafeFishSearch))
@@ -658,6 +667,7 @@ type playerRow struct {
 	Silver  int64   `json:"silver"`
 	Gold    int64   `json:"gold"`
 	Bank    int64   `json:"bank"`
+	Avatar  string  `json:"avatar"` // 头像 URL：玩家列表也下发，便于他人查看
 	Banned  bool    `json:"banned"`
 	Online  bool    `json:"online"`
 	Updated float64 `json:"updated_ts"`
@@ -669,12 +679,18 @@ func (s *Server) handlePlayers(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	rows := make([]playerRow, 0)
 	var err error
+	// 历史库可能没有 avatar 列，用常量占位保证 Scan 顺序一致。
+	avatarSel := "COALESCE(avatar,''), "
+	if !s.db.HasAvatarColumn() {
+		avatarSel = "'' AS avatar, "
+	}
+	selectCols := `SELECT uid, name, level, xp, silver, gold, bank, ` + avatarSel +
+		`COALESCE(banned,0), COALESCE(updated_ts,0) FROM profile`
 	if q == "" {
-		err = queryPlayers(ctx, s.db, &rows,
-			`SELECT uid, name, level, xp, silver, gold, bank, COALESCE(banned,0), COALESCE(updated_ts,0) FROM profile ORDER BY uid LIMIT 100`)
+		err = queryPlayers(ctx, s.db, &rows, selectCols+` ORDER BY uid LIMIT 100`)
 	} else {
 		err = queryPlayers(ctx, s.db, &rows,
-			`SELECT uid, name, level, xp, silver, gold, bank, COALESCE(banned,0), COALESCE(updated_ts,0) FROM profile WHERE CAST(uid AS TEXT)=? OR name LIKE '%'||?||'%' ORDER BY uid LIMIT 100`, q, q)
+			selectCols+` WHERE CAST(uid AS TEXT)=? OR name LIKE '%'||?||'%' ORDER BY uid LIMIT 100`, q, q)
 	}
 	if err != nil {
 		httpError(w, 500, err.Error())
@@ -727,7 +743,7 @@ func queryPlayers(ctx context.Context, db *store.DB, out *[]playerRow, q string,
 	for rows.Next() {
 		var p playerRow
 		var banned int64
-		if err := rows.Scan(&p.UID, &p.Name, &p.Level, &p.XP, &p.Silver, &p.Gold, &p.Bank, &banned, &p.Updated); err != nil {
+		if err := rows.Scan(&p.UID, &p.Name, &p.Level, &p.XP, &p.Silver, &p.Gold, &p.Bank, &p.Avatar, &banned, &p.Updated); err != nil {
 			return err
 		}
 		p.Banned = banned != 0

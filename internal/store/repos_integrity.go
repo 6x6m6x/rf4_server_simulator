@@ -37,6 +37,8 @@ var RuntimeTables = []string{
 	"tunables", "admin_user", "audit_log", "gift_pack", "gw_token", "gw_handoff",
 	"kv", "admin_queue", "achievement_def", "static_dataset_meta", "schema_migrations",
 	"request_receipts", "market_offer", "shop_item_override",
+	// 邮件模板是运营数据（后台保存后群发），不属于玩家存档。
+	"mail_templates",
 	"fish_weight_override", "fish_weight_base", "fish_bite_setting", "fish_grade_lines", "skill_link",
 	"fish_ecology", "skill_fish_effect_def", "skill_cast_effect_def", "hook_bite_profile", "fish_bait_override",
 	"fish_zone", "fish_zone_fish",

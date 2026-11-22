@@ -643,11 +643,31 @@ func (s *Server) handlePlayerKeepnetDelete(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleMailSend(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		UID   int64            `json:"uid"`
+		UIDs  []int64          `json:"uids"`
 		Text  string           `json:"text"`
 		Items []store.MailItem `json:"items"`
 	}
-	if err := readJSON(r, &req); err != nil || req.UID == 0 || (strings.TrimSpace(req.Text) == "" && len(req.Items) == 0) {
-		httpError(w, 400, "参数错误：需要 uid、正文或附件")
+	if err := readJSON(r, &req); err != nil {
+		httpError(w, 400, "参数错误")
+		return
+	}
+	// 兼容旧的单 uid 参数：uids 为空时回退到 uid。
+	uids := req.UIDs
+	if len(uids) == 0 && req.UID > 0 {
+		uids = []int64{req.UID}
+	}
+	// 去重并过滤非法 uid，避免同一玩家收到多封重复邮件。
+	seen := make(map[int64]bool, len(uids))
+	clean := make([]int64, 0, len(uids))
+	for _, uid := range uids {
+		if uid <= 0 || seen[uid] {
+			continue
+		}
+		seen[uid] = true
+		clean = append(clean, uid)
+	}
+	if len(clean) == 0 || (strings.TrimSpace(req.Text) == "" && len(req.Items) == 0) {
+		httpError(w, 400, "参数错误：需要 uid/uids、正文或附件")
 		return
 	}
 	for i := range req.Items {
@@ -664,13 +684,18 @@ func (s *Server) handleMailSend(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 400, err.Error())
 		return
 	}
-	if err := s.db.QueuePush(r.Context(), mustJSON(map[string]any{
-		"op": "send_mail", "uid": req.UID, "text": req.Text, "items": req.Items,
-	})); err != nil {
-		httpError(w, 500, "写入发送队列失败: "+err.Error())
-		return
+	// 沿用单 uid 的队列消息格式逐人下发，gameserver 消费端无需改动。
+	uidStrs := make([]string, 0, len(clean))
+	for _, uid := range clean {
+		if err := s.db.QueuePush(r.Context(), mustJSON(map[string]any{
+			"op": "send_mail", "uid": uid, "text": req.Text, "items": req.Items,
+		})); err != nil {
+			httpError(w, 500, "写入发送队列失败: "+err.Error())
+			return
+		}
+		uidStrs = append(uidStrs, strconv.FormatInt(uid, 10))
 	}
 	detail, _ := json.Marshal(req)
-	_ = s.db.AuditLogWrite(r.Context(), adminOf(r), "mail_send", strconv.FormatInt(req.UID, 10), string(detail))
-	writeJSON(w, map[string]any{"ok": true, "queued": true})
+	_ = s.db.AuditLogWrite(r.Context(), adminOf(r), "mail_send", strings.Join(uidStrs, ","), string(detail))
+	writeJSON(w, map[string]any{"ok": true, "queued": len(clean)})
 }

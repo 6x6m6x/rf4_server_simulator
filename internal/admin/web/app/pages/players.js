@@ -9,6 +9,13 @@ const TABS = [['profile', '概况'], ['items', '背包'], ['keepnet', '护鱼网
 const GRADE = ['未钓到', '钓到过', '达标', '星级', '蓝冠'];
 const cents = (v) => (Number(v || 0) / 100).toFixed(2).replace(/\.00$/, '');
 let QUERY = '';
+// 玩家头像：列表里若有头像 URL 就显示小图，加载失败或未设置则回退到首字母。
+function avatarEl(p) {
+  const box = h('div', { class: 'avatar' });
+  if (p.avatar) box.append(h('img', { src: p.avatar, alt: '', style: { width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }, onerror: () => { box.textContent = (p.name || '?').slice(0, 1); } }));
+  else box.textContent = (p.name || '?').slice(0, 1);
+  return box;
+}
 
 export default async function players(params) {
   const [uidParam, tabParam] = params;
@@ -28,7 +35,7 @@ export default async function players(params) {
       listBox.replaceChildren(...(list.length ? list.map((p) => h('div', {
         class: 'list-item clickable' + (String(p.uid) === String(uidParam) ? ' on' : ''),
         onclick: () => navigate('players', p.uid),
-      }, h('div', { class: 'avatar', text: (p.name || '?').slice(0, 1) }),
+      }, avatarEl(p),
       h('div', { class: 'grow' }, h('div', { class: 'title', text: p.name }), h('div', { class: 'sub', text: `UID ${p.uid} · ${p.level} 级` })),
       p.banned ? badge('已封禁', 'bad') : p.online ? badge('在线', 'ok', true) : null)) : [empty(QUERY ? '没有找到' : '还没有玩家', QUERY ? '换个关键词试试。' : '玩家第一次登录游戏后会出现在这里。')]));
       return list;
@@ -157,6 +164,80 @@ function profile(p, reload, setDirty) {
   const hh = p.happy_hour || {};
   const hhText = hh.enabled === false ? '欢乐时光已在「玩法规则」里关闭。' : !hh.qualified ? '开通会员后可以享受欢乐时光加成。'
     : hh.unlimited ? '永久会员，欢乐时光一直有效。' : `欢乐时光有效，剩余约 ${Math.ceil((hh.remaining_seconds || 0) / 60)} 分钟。`;
+  // 登录密码：只显示是否设置，不回显；留空即免密。
+  const pwdState = h('span', { class: 'badge', text: p.password_set ? '已设置' : '未设置' });
+  const pwdInput = h('input', { type: 'password', class: 'input', placeholder: '留空 = 免密登录', autocomplete: 'new-password', style: { maxWidth: '260px' } });
+  const pwdHint = h('div', { class: 'muted small' });
+  const setPwd = async (clear) => {
+    const password = clear ? '' : pwdInput.value.trim();
+    if (!clear && !password) { toast('密码不能为空；想恢复免密请点「清除密码」', 'bad'); return; }
+    if (!clear && !(await confirmDialog({ title: `为「${p.name}」设置登录密码？`, desc: '设置后登录这个角色需要输入密码。密码不会回显，请自行记好。', confirm: '设置密码' }))) return;
+    if (clear && !(await confirmDialog({ title: `清除「${p.name}」的登录密码？`, desc: '清除后这个角色将恢复免密登录。', confirm: '清除密码', danger: true }))) return;
+    try {
+      const r = await post('/api/players/password', { uid: p.uid, password });
+      const on = !!r.password_set;
+      pwdState.textContent = on ? '已设置' : '未设置';
+      pwdInput.value = '';
+      pwdHint.textContent = on ? '密码已设置（不会回显）' : '已清除，当前为免密登录';
+      toast(on ? '密码已设置' : '已清除密码，免密登录');
+    } catch (e) { toast(errText(e), 'bad'); }
+  };
+  const passwordBlock = h('div', {},
+    h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '8px 0 4px' }, text: '登录密码' }),
+    h('div', { class: 'field', style: { marginBottom: '6px' } },
+      h('label', {}, '当前状态：', pwdState, h('span', { class: 'muted small', text: ' · 密码不回显，只显示是否已设置' })),
+      h('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, pwdInput,
+        btn('设置密码', () => setPwd(false), 'primary sm'),
+        btn('清除密码', () => setPwd(true), 'danger sm'))),
+    pwdHint);
+  // IP 绑定：与 gateway 共用映射，独立于档案保存。
+  const ipBody = h('tbody');
+  const newIp = h('input', { class: 'input', placeholder: '例如 192.168.1.9', style: { width: '190px' } });
+  const newUid = h('input', { class: 'input num', type: 'number', min: '1', placeholder: 'UID', style: { width: '120px' } });
+  async function reloadBindings() {
+    ipBody.replaceChildren(h('tr', {}, h('td', { colspan: 3 }, loading(3))));
+    try {
+      const r = await api('/api/players/ip-bindings');
+      const rows = r.bindings || [];
+      ipBody.replaceChildren(...(rows.length ? rows.map((b) => {
+        const uidInput = h('input', { class: 'input num', type: 'number', min: '1', value: String(b.uid), style: { width: '120px' } });
+        return h('tr', {},
+          h('td', { class: 'mono', text: b.ip }),
+          h('td', {}, uidInput),
+          h('td', {}, h('div', { class: 'row' },
+            btn('保存', async () => {
+              const uid = +uidInput.value;
+              if (!Number.isInteger(uid) || uid <= 0) { toast('UID 必须是正整数', 'bad'); return; }
+              try { await post('/api/players/ip-binding', { ip: b.ip, uid }); toast('已保存 IP 绑定'); reloadBindings(); } catch (e) { toast(errText(e), 'bad'); }
+            }, 'primary sm'),
+            btn('删除', async () => {
+              if (!(await confirmDialog({ title: `删除 IP 绑定「${b.ip}」？`, desc: '删除后这个 IP 不再强制绑定到该角色。', confirm: '删除', danger: true }))) return;
+              try { await post('/api/players/ip-binding', { ip: b.ip, uid: 0 }); toast('已删除 IP 绑定'); reloadBindings(); } catch (e) { toast(errText(e), 'bad'); }
+            }, 'danger sm'))));
+      }) : [h('tr', {}, h('td', { colspan: 3 }, empty('还没有 IP 绑定')))]));
+    } catch (e) { ipBody.replaceChildren(h('tr', {}, h('td', { colspan: 3 }, empty('读取失败', errText(e))))); }
+  }
+  const ipBlock = h('div', {},
+    h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '8px 0 4px' }, text: 'IP 绑定' }),
+    h('p', { class: 'muted small', style: { margin: '0 0 8px' }, text: '绑定后该 IP 登录会强制进入指定角色；删除映射即取消绑定。' }),
+    h('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap', marginBottom: '8px' } }, newIp, newUid,
+      btn('新增绑定', async () => {
+        const ip = newIp.value.trim(), uid = +newUid.value;
+        if (!ip || ip.includes('/') || ip.includes('\\')) { toast('IP 不能为空且不能包含路径分隔符', 'bad'); return; }
+        if (!Number.isInteger(uid) || uid <= 0) { toast('UID 必须是正整数', 'bad'); return; }
+        try { await post('/api/players/ip-binding', { ip, uid }); toast('已新增 IP 绑定'); newIp.value = ''; newUid.value = ''; reloadBindings(); } catch (e) { toast(errText(e), 'bad'); }
+      }, 'primary sm', { icon: 'plus' })),
+    h('div', { class: 'table-wrap', style: { maxHeight: '36vh' } }, h('table', { class: 'table' },
+      h('thead', {}, h('tr', {}, h('th', { text: 'IP' }), h('th', { text: '绑定 UID' }), h('th', {}))), ipBody)));
+  reloadBindings();
+  // 危险操作：彻底删除玩家。
+  const dangerBlock = h('div', { style: { borderTop: '1px solid var(--line)', marginTop: '14px', paddingTop: '14px' } },
+    h('h3', { class: 'small', style: { color: 'var(--bad)', margin: '0 0 6px' }, text: '危险操作' }),
+    h('p', { class: 'muted small', style: { margin: '0 0 8px' }, text: '彻底删除这个玩家，包括背包、护鱼网、图鉴、邮件、技能、会员等全部数据和档案，且不可恢复。' }),
+    btn('删除此玩家全部数据', async () => {
+      if (!(await confirmDialog({ title: `彻底删除「${p.name}」？`, desc: '这会删除这个玩家的所有数据和档案，不可恢复！请确认已经备份。', confirm: '我确认，彻底删除', danger: true }))) return;
+      try { await post('/api/players/delete', { uid: p.uid, confirm: true }); toast('玩家及其全部数据已删除'); setTimeout(() => navigate('players'), 500); } catch (e) { toast(errText(e), 'bad'); }
+    }, 'danger', { icon: 'trash' }));
   return h('div', { class: 'stack', style: { paddingTop: '4px' } },
     h('div', {},
       h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '4px 0 4px' }, text: '角色' }),
@@ -171,30 +252,53 @@ function profile(p, reload, setDirty) {
       form.row({ key: 'bank', label: '银行存款', kind: 'float', min: 0 }, cents(p.bank))),
     h('div', {},
       h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '8px 0 10px' }, text: '会员' }),
-      h('div', { class: 'stack' }, h('div', { class: 'row' }, seg, expWrap), h('div', { class: 'muted small', text: hhText }))));
+      h('div', { class: 'stack' }, h('div', { class: 'row' }, seg, expWrap), h('div', { class: 'muted small', text: hhText }))),
+    passwordBlock, ipBlock, dangerBlock);
 }
 
 // ---------- 背包 ----------
 function items(p, reload) {
   let q = '';
+  const checked = new Set();
   const body = h('tbody');
+  const selCount = h('span', { class: 'muted small' });
+  const visible = () => (p.items || []).filter((x) => !q || `${x.item_id} ${x.name} ${x.guid}`.toLowerCase().includes(q));
+  const delBtn = btn('删除选中物品', async () => {
+    const guids = [...checked];
+    if (!guids.length) { toast('先勾选要删除的物品', 'bad'); return; }
+    if (!(await confirmDialog({ title: `删除选中的 ${guids.length} 件物品？`, desc: '这些物品会从背包或装备里删除，不能恢复。', confirm: `删除 ${guids.length} 件`, danger: true }))) return;
+    try { await post('/api/players/items/delete', { uid: p.uid, guids }); checked.clear(); toast(`已删除 ${guids.length} 件，约 2 秒后生效`); setTimeout(reload, 2300); } catch (e) { toast(errText(e), 'bad'); }
+  }, 'danger sm', { icon: 'trash', disabled: true });
+  const allBox = h('input', { type: 'checkbox', style: { width: '16px', height: '16px', accentColor: 'var(--accent)', cursor: 'pointer' }, onchange: (e) => {
+    for (const x of visible()) e.target.checked ? checked.add(x.guid) : checked.delete(x.guid);
+    draw();
+  } });
+  const syncAll = () => {
+    const rows = visible();
+    allBox.checked = rows.length > 0 && rows.every((x) => checked.has(x.guid));
+    allBox.indeterminate = rows.some((x) => checked.has(x.guid)) && !allBox.checked;
+    delBtn.disabled = !checked.size;
+    selCount.textContent = checked.size ? `已选 ${checked.size} 件` : '';
+  };
   const draw = () => {
-    const rows = (p.items || []).filter((x) => !q || `${x.item_id} ${x.name} ${x.guid}`.toLowerCase().includes(q));
+    const rows = visible();
     body.replaceChildren(...(rows.length ? rows.map((x) => h('tr', {},
+      h('td', {}, h('input', { type: 'checkbox', checked: checked.has(x.guid), style: { width: '16px', height: '16px', accentColor: 'var(--accent)', cursor: 'pointer' }, onchange: (e) => { e.target.checked ? checked.add(x.guid) : checked.delete(x.guid); syncAll(); } })),
       h('td', {}, h('div', { class: 'row', style: { flexWrap: 'nowrap' } }, itemIcon(x.item_id), h('div', {}, h('b', { text: x.name || x.item_id }), h('span', { class: 'sub mono', text: x.item_id })))),
       h('td', { text: x.container === 'equip' ? '装备中' : x.container === 'bag' ? '背包' : (x.container || '') }),
       h('td', { class: 'num', text: fmt(x.qty) }),
       h('td', { class: 'num', text: x.durability === undefined || x.durability === null ? '—' : Number(x.durability) <= 1 ? (Number(x.durability) * 100).toFixed(1) + '%' : String(x.durability) }),
-      h('td', { class: 'num' }, btn('删除', async () => {
+      h('td', {}, btn('删除', async () => {
         if (!(await confirmDialog({ title: `删除「${x.name || x.item_id}」？`, desc: '从这个玩家的背包或装备里删除，不能恢复。', confirm: '删除', danger: true }))) return;
-        try { await post('/api/players/items/delete', { uid: p.uid, guids: [x.guid] }); toast('已删除，约 2 秒后生效'); setTimeout(reload, 2300); } catch (e) { toast(errText(e), 'bad'); }
-      }, 'ghost sm')))) : [h('tr', {}, h('td', { colspan: 5 }, empty(q ? '没有匹配的物品' : '背包是空的')))]));
+        try { await post('/api/players/items/delete', { uid: p.uid, guids: [x.guid] }); checked.delete(x.guid); toast('已删除，约 2 秒后生效'); setTimeout(reload, 2300); } catch (e) { toast(errText(e), 'bad'); }
+      }, 'ghost sm')))) : [h('tr', {}, h('td', { colspan: 6 }, empty(q ? '没有匹配的物品' : '背包是空的')))]));
+    syncAll();
   };
   draw();
   return h('div', { class: 'stack' },
-    searchBox('筛选物品名称或 ID', (v) => { q = v.toLowerCase(); draw(); }),
+    h('div', { class: 'row' }, h('div', { style: { flex: '1', minWidth: '200px' } }, searchBox('筛选物品名称或 ID', (v) => { q = v.toLowerCase(); draw(); })), delBtn, selCount),
     h('div', { class: 'table-wrap', style: { maxHeight: '62vh' } }, h('table', { class: 'table' },
-      h('thead', {}, h('tr', {}, h('th', { text: '物品' }), h('th', { text: '位置' }), h('th', { class: 'num', text: '数量' }), h('th', { class: 'num', text: '耐久' }), h('th', {}))), body)));
+      h('thead', {}, h('tr', {}, h('th', {}, allBox), h('th', { text: '物品' }), h('th', { text: '位置' }), h('th', { class: 'num', text: '数量' }), h('th', { class: 'num', text: '耐久' }), h('th', {}))), body)));
 }
 
 // ---------- 护鱼网 ----------
