@@ -2,8 +2,6 @@ package admin
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"net/http/httptest"
 	"os"
@@ -44,47 +42,6 @@ func callExtra(t *testing.T, srv *Server, token, method, path, body string) (int
 	srv.Handler().ServeHTTP(w, r)
 	return w.Code, w.Body.String()
 }
-
-func TestPlayerPasswordStoreAndAPI(t *testing.T) {
-	srv, token, db := newExtraTestServer(t)
-	ctx := context.Background()
-	uid := int64(4242)
-	if _, err := db.EnsureProfile(ctx, uid); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.SQL.ExecContext(ctx, `UPDATE profile SET name='pw_tester' WHERE uid=?`, uid); err != nil {
-		t.Fatal(err)
-	}
-
-	code, body := callExtra(t, srv, token, "POST", "/api/players/password", `{"uid":4242,"password":"secret"}`)
-	if code != 200 {
-		t.Fatalf("设置密码失败: %d %s", code, body)
-	}
-	sum := sha1.Sum([]byte("secret"))
-	want := hex.EncodeToString(sum[:])
-	got, err := db.GetPasswordSHA1(ctx, uid)
-	if err != nil || got != want {
-		t.Fatalf("密码哈希 = %q, want %q, err=%v", got, want, err)
-	}
-	// 密码与哈希都不回显。
-	if strings.Contains(strings.ToLower(body), want) || strings.Contains(strings.ToLower(body), "secret") {
-		t.Fatalf("响应泄漏了密码或哈希: %s", body)
-	}
-	found, err := db.FindUIDByName(ctx, "pw_tester")
-	if err != nil || found != uid {
-		t.Fatalf("按用户名查 uid = %d, want %d, err=%v", found, uid, err)
-	}
-
-	code, _ = callExtra(t, srv, token, "POST", "/api/players/password", `{"uid":4242,"password":""}`)
-	if code != 200 {
-		t.Fatalf("清空密码失败: %d", code)
-	}
-	got, _ = db.GetPasswordSHA1(ctx, uid)
-	if got != "" {
-		t.Fatalf("清空后密码应为空, got %q", got)
-	}
-}
-
 func TestIPBindingsAPI(t *testing.T) {
 	t.Chdir(t.TempDir()) // 与 gateway 一样使用工作目录下的 JSON 文件
 	srv, token, _ := newExtraTestServer(t)

@@ -84,8 +84,7 @@ func NewServer(cfg config.Admin, db *store.DB, log logger, webFS fs.FS) *Server 
 	mux.HandleFunc("GET /api/players/records", auth(s.handlePlayerRecords))
 	mux.HandleFunc("POST /api/players/records", auth(s.handlePlayerRecordsSave))
 	mux.HandleFunc("POST /api/players/avatar", auth(s.handlePlayerAvatarUpload))
-	// 玩家密码 / IP 绑定 / 彻底删除（实现见 features_extra.go）。
-	mux.HandleFunc("POST /api/players/password", auth(s.handlePlayerPasswordSet))
+	// IP 绑定 / 彻底删除（实现见 features_extra.go）。
 	mux.HandleFunc("GET /api/players/ip-bindings", auth(s.handleIPBindingsList))
 	mux.HandleFunc("POST /api/players/ip-binding", auth(s.handleIPBindingSet))
 	mux.HandleFunc("POST /api/players/delete", auth(s.handlePlayerDelete))

@@ -164,71 +164,6 @@ function profile(p, reload, setDirty) {
   const hh = p.happy_hour || {};
   const hhText = hh.enabled === false ? '欢乐时光已在「玩法规则」里关闭。' : !hh.qualified ? '开通会员后可以享受欢乐时光加成。'
     : hh.unlimited ? '永久会员，欢乐时光一直有效。' : `欢乐时光有效，剩余约 ${Math.ceil((hh.remaining_seconds || 0) / 60)} 分钟。`;
-  // 登录密码：只显示是否设置，不回显；留空即免密。
-  const pwdState = h('span', { class: 'badge', text: p.password_set ? '已设置' : '未设置' });
-  const pwdInput = h('input', { type: 'password', class: 'input', placeholder: '留空 = 免密登录', autocomplete: 'new-password', style: { maxWidth: '260px' } });
-  const pwdHint = h('div', { class: 'muted small' });
-  const setPwd = async (clear) => {
-    const password = clear ? '' : pwdInput.value.trim();
-    if (!clear && !password) { toast('密码不能为空；想恢复免密请点「清除密码」', 'bad'); return; }
-    if (!clear && !(await confirmDialog({ title: `为「${p.name}」设置登录密码？`, desc: '设置后登录这个角色需要输入密码。密码不会回显，请自行记好。', confirm: '设置密码' }))) return;
-    if (clear && !(await confirmDialog({ title: `清除「${p.name}」的登录密码？`, desc: '清除后这个角色将恢复免密登录。', confirm: '清除密码', danger: true }))) return;
-    try {
-      const r = await post('/api/players/password', { uid: p.uid, password });
-      const on = !!r.password_set;
-      pwdState.textContent = on ? '已设置' : '未设置';
-      pwdInput.value = '';
-      pwdHint.textContent = on ? '密码已设置（不会回显）' : '已清除，当前为免密登录';
-      toast(on ? '密码已设置' : '已清除密码，免密登录');
-    } catch (e) { toast(errText(e), 'bad'); }
-  };
-  const passwordBlock = h('div', {},
-    h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '8px 0 4px' }, text: '登录密码' }),
-    h('div', { class: 'field', style: { marginBottom: '6px' } },
-      h('label', {}, '当前状态：', pwdState, h('span', { class: 'muted small', text: ' · 密码不回显，只显示是否已设置' })),
-      h('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, pwdInput,
-        btn('设置密码', () => setPwd(false), 'primary sm'),
-        btn('清除密码', () => setPwd(true), 'danger sm'))),
-    pwdHint);
-  // IP 绑定：与 gateway 共用映射，独立于档案保存。
-  const ipBody = h('tbody');
-  const newIp = h('input', { class: 'input', placeholder: '例如 192.168.1.9', style: { width: '190px' } });
-  const newUid = h('input', { class: 'input num', type: 'number', min: '1', placeholder: 'UID', style: { width: '120px' } });
-  async function reloadBindings() {
-    ipBody.replaceChildren(h('tr', {}, h('td', { colspan: 3 }, loading(3))));
-    try {
-      const r = await api('/api/players/ip-bindings');
-      const rows = r.bindings || [];
-      ipBody.replaceChildren(...(rows.length ? rows.map((b) => {
-        const uidInput = h('input', { class: 'input num', type: 'number', min: '1', value: String(b.uid), style: { width: '120px' } });
-        return h('tr', {},
-          h('td', { class: 'mono', text: b.ip }),
-          h('td', {}, uidInput),
-          h('td', {}, h('div', { class: 'row' },
-            btn('保存', async () => {
-              const uid = +uidInput.value;
-              if (!Number.isInteger(uid) || uid <= 0) { toast('UID 必须是正整数', 'bad'); return; }
-              try { await post('/api/players/ip-binding', { ip: b.ip, uid }); toast('已保存 IP 绑定'); reloadBindings(); } catch (e) { toast(errText(e), 'bad'); }
-            }, 'primary sm'),
-            btn('删除', async () => {
-              if (!(await confirmDialog({ title: `删除 IP 绑定「${b.ip}」？`, desc: '删除后这个 IP 不再强制绑定到该角色。', confirm: '删除', danger: true }))) return;
-              try { await post('/api/players/ip-binding', { ip: b.ip, uid: 0 }); toast('已删除 IP 绑定'); reloadBindings(); } catch (e) { toast(errText(e), 'bad'); }
-            }, 'danger sm'))));
-      }) : [h('tr', {}, h('td', { colspan: 3 }, empty('还没有 IP 绑定')))]));
-    } catch (e) { ipBody.replaceChildren(h('tr', {}, h('td', { colspan: 3 }, empty('读取失败', errText(e))))); }
-  }
-  const ipBlock = h('div', {},
-    h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '8px 0 4px' }, text: 'IP 绑定' }),
-    h('p', { class: 'muted small', style: { margin: '0 0 8px' }, text: '绑定后该 IP 登录会强制进入指定角色；删除映射即取消绑定。' }),
-    h('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap', marginBottom: '8px' } }, newIp, newUid,
-      btn('新增绑定', async () => {
-        const ip = newIp.value.trim(), uid = +newUid.value;
-        if (!ip || ip.includes('/') || ip.includes('\\')) { toast('IP 不能为空且不能包含路径分隔符', 'bad'); return; }
-        if (!Number.isInteger(uid) || uid <= 0) { toast('UID 必须是正整数', 'bad'); return; }
-        try { await post('/api/players/ip-binding', { ip, uid }); toast('已新增 IP 绑定'); newIp.value = ''; newUid.value = ''; reloadBindings(); } catch (e) { toast(errText(e), 'bad'); }
-      }, 'primary sm', { icon: 'plus' })),
-    h('div', { class: 'table-wrap', style: { maxHeight: '36vh' } }, h('table', { class: 'table' },
-      h('thead', {}, h('tr', {}, h('th', { text: 'IP' }), h('th', { text: '绑定 UID' }), h('th', {}))), ipBody)));
   reloadBindings();
   // 危险操作：彻底删除玩家。
   const dangerBlock = h('div', { style: { borderTop: '1px solid var(--line)', marginTop: '14px', paddingTop: '14px' } },
@@ -252,8 +187,7 @@ function profile(p, reload, setDirty) {
       form.row({ key: 'bank', label: '银行存款', kind: 'float', min: 0 }, cents(p.bank))),
     h('div', {},
       h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '8px 0 10px' }, text: '会员' }),
-      h('div', { class: 'stack' }, h('div', { class: 'row' }, seg, expWrap), h('div', { class: 'muted small', text: hhText }))),
-    passwordBlock, ipBlock, dangerBlock);
+      h('div', { class: 'stack' }, h('div', { class: 'row' }, seg, expWrap), h('div', { class: 'muted small', text: hhText }))), ipSection, dangerBlock);
 }
 
 // ---------- 背包 ----------

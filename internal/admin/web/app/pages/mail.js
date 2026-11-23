@@ -11,10 +11,12 @@ const TEMPLATES = [
 export default async function mail(params) {
   // 收件人：支持一次选多人；从玩家页带 params[0] 进入时预填一位。
   const recipients = [];
-  if (params[0]) {
+  // 从玩家页跳转可能带进 "null" 之类的脏参数，先校验再预填，避免拼出 nullnull。
+  if (params[0] && params[0] !== 'null' && Number(params[0]) > 0) {
     try {
       const p = await api('/api/players/detail?uid=' + encodeURIComponent(params[0]));
-      recipients.push({ uid: p.uid, name: p.name, level: p.level });
+      // detail 也可能返回空对象或空字段，校验后再加入收件人。
+      if (p && Number(p.uid) > 0) recipients.push({ uid: p.uid, name: p.name || ('UID ' + p.uid), level: p.level });
     } catch (e) {}
   }
 
@@ -31,14 +33,15 @@ export default async function mail(params) {
     results.replaceChildren(list.length ? h('div', { class: 'list' }, list.slice(0, 20).map((p) => h('div', {
       class: 'list-item clickable',
       onclick: () => {
-        if (!recipients.some((r) => r.uid === p.uid)) recipients.push({ uid: p.uid, name: p.name, level: p.level });
+        // 搜索结果也可能有空名字或无效 UID，同样兜底后再加入收件人。
+        if (Number(p.uid) > 0 && !recipients.some((r) => r.uid === p.uid)) recipients.push({ uid: p.uid, name: p.name || ('UID ' + p.uid), level: p.level });
         searchInput.value = '';
         results.hidden = true;
         drawTo();
         preview();
       },
     }, h('div', { class: 'avatar', text: (p.name || '?').slice(0, 1) }),
-      h('div', { class: 'grow' }, h('div', { class: 'title', text: p.name }), h('div', { class: 'sub', text: `UID ${p.uid} · ${p.level} 级` })),
+      h('div', { class: 'grow' }, h('div', { class: 'title', text: p.name || ('UID ' + p.uid) }), h('div', { class: 'sub', text: `UID ${p.uid || '?'} · ${p.level} 级` })),
       p.online ? badge('在线', 'ok', true) : null))) : empty('没有找到'));
   }, 250));
   const searchInput = searchEl.querySelector('input');
@@ -47,7 +50,7 @@ export default async function mail(params) {
   const drawTo = () => {
     const list = recipients.length ? h('div', { class: 'card' }, h('div', { class: 'list' }, recipients.map((r, i) => h('div', { class: 'list-item' },
       h('div', { class: 'avatar', text: (r.name || '?').slice(0, 1) }),
-      h('div', { class: 'grow' }, h('b', { text: r.name }), h('div', { class: 'muted small', text: `UID ${r.uid}` + (r.level ? ` · ${r.level} 级` : '') })),
+      h('div', { class: 'grow' }, h('b', { text: r.name || ('玩家' + r.uid) }), h('div', { class: 'muted small', text: `UID ${r.uid || '?'}` + (r.level ? ` · ${r.level} 级` : '') })),
       btn('', () => { recipients.splice(i, 1); drawTo(); preview(); }, 'ghost icon sm', { icon: 'x', 'aria-label': '移除' }))))) : null;
     const actions = recipients.length ? h('div', { class: 'row', style: { marginTop: '8px', gap: '8px' } },
       btn('继续添加', () => { searchWrap.hidden = false; searchInput.focus(); }, 'ghost sm', { icon: 'plus' }),
@@ -72,9 +75,10 @@ export default async function mail(params) {
   const pv = h('div');
   function preview() {
     const lines = text.value.trim();
+    const nameOf = (r) => r.name || ('玩家' + r.uid);
     const who = !recipients.length ? '还没选'
-      : recipients.length <= 3 ? recipients.map((r) => `${r.name}（UID ${r.uid}）`).join('、')
-      : `${recipients.slice(0, 3).map((r) => r.name).join('、')} 等 ${recipients.length} 人`;
+      : recipients.length <= 3 ? recipients.map((r) => `${nameOf(r)}（UID ${r.uid || '?'}）`).join('、')
+      : `${recipients.slice(0, 3).map(nameOf).join('、')} 等 ${recipients.length} 人`;
     pv.replaceChildren(h('div', { class: 'card', style: { padding: '18px', background: 'var(--surface-2)' } },
       h('div', { class: 'muted small', text: '收件人：' + who }),
       h('div', { style: { margin: '12px 0', whiteSpace: 'pre-wrap', minHeight: '60px', color: lines ? 'var(--text)' : 'var(--faint)' }, text: lines || '（没有正文）' }),
@@ -155,7 +159,7 @@ export default async function mail(params) {
   const send = btn('发送', async () => {
     if (!recipients.length) { toast('请先选择收件人', 'bad'); return; }
     if (!text.value.trim() && !attach.length) { toast('正文和附件不能都为空', 'bad'); return; }
-    const title = recipients.length === 1 ? `发给「${recipients[0].name}」？` : `发给 ${recipients.length} 位玩家？`;
+    const title = recipients.length === 1 ? `发给「${recipients[0].name || ('玩家' + recipients[0].uid)}」？` : `发给 ${recipients.length} 位玩家？`;
     const desc = (attach.length ? `附带 ${attach.length} 种物品。` : '') + '发出后不能撤回。';
     if (!(await confirmDialog({ title, desc, confirm: '发送' }))) return;
     send.disabled = true;

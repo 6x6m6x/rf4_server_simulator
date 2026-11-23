@@ -229,6 +229,32 @@ func mustHex(t *testing.T, h string) []byte {
 	return raw
 }
 
+// TestSocialUserCardAvatarURL 回归测试：24/19 资料卡 f2 必须下发 profile.avatar 中
+// 后台设置的完整头像 URL；此前写死为 null 串，导致其他玩家显示默认头像。
+func TestSocialUserCardAvatarURL(t *testing.T) {
+	t.Parallel()
+	env := newDLineTestEnv(t, 100)
+	registerSocialHandlers(env.srv.dispatch)
+	ctx := context.Background()
+
+	if _, err := env.db.EnsureProfile(ctx, 200); err != nil {
+		t.Fatal(err)
+	}
+	const avatarURL = "http://x/a.png"
+	if _, err := env.db.SQL.ExecContext(ctx, `UPDATE profile SET avatar=? WHERE uid=200`, avatarURL); err != nil {
+		t.Fatal(err)
+	}
+
+	v := env.invoke(t, 24, 19, proto.Args524(proto.U32(200)))
+	card := decodeWrappedBytes(t, v)
+	if card.Class != "dgbmlekfpbg" {
+		t.Fatalf("24/19 card class=%q", card.Class)
+	}
+	if card.Fields[2].Str == nil || *card.Fields[2].Str != avatarURL {
+		t.Fatalf("24/19.f2 avatar=%v，期望 %q", card.Fields[2].Str, avatarURL)
+	}
+}
+
 func TestCompetitionHandlerLifecycleAndResults(t *testing.T) {
 	t.Parallel()
 	env := newDLineTestEnv(t, 1)

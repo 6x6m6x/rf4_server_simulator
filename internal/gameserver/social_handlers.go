@@ -84,6 +84,7 @@ func hSocialUserCard(ctx *Ctx) ([]byte, bool) {
 	}
 	var p *store.Profile
 	names := ""
+	avatar := "" // 头像 URL（f2）：默认空串，从 profile.avatar 读取后台设置的完整 URL
 	level := int64(1)
 	role := int64(0)
 	region := int64(0)
@@ -96,6 +97,7 @@ func hSocialUserCard(ctx *Ctx) ([]byte, bool) {
 		}
 		if p != nil {
 			names = p.Name
+			avatar = p.Avatar // 下发后台设置的头像，修复其他玩家显示默认头像的问题
 			level = p.Level
 			role = p.Role
 			region = socialRegionCode(p.Region)
@@ -115,7 +117,7 @@ func hSocialUserCard(ctx *Ctx) ([]byte, bool) {
 	inner := wiregen.MustMakeObj("dgbmlekfpbg", map[int]*proto.Value{
 		0: proto.U32(uint32(uid)),
 		1: proto.StrVal(names),
-		2: proto.Str(nil, 0x15),
+		2: proto.Str(&avatar, 0x15),
 		3: proto.U32(uint32(role)),
 		4: proto.U32(uint32(level)),
 		5: proto.U32(uint32(trophies)),

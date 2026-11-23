@@ -2,9 +2,7 @@ package admin
 
 import (
 	"context"
-	"crypto/sha1"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -19,37 +17,6 @@ import (
 )
 
 // ---- 玩家密码（简化版：只存 SHA1，不建账号体系） ----
-
-// handlePlayerPasswordSet 设置/清空玩家登录密码。
-// 密码在服务端计算 SHA1 小写 hex 后落库；空密码表示恢复免密。
-// 明文与哈希都不回显，也不写入审计明细。
-func (s *Server) handlePlayerPasswordSet(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		UID      int64  `json:"uid"`
-		Password string `json:"password"`
-	}
-	if err := readJSON(r, &req); err != nil || req.UID <= 0 {
-		httpError(w, 400, "参数错误：需要有效的 uid")
-		return
-	}
-	hash := ""
-	if req.Password != "" {
-		sum := sha1.Sum([]byte(req.Password))
-		hash = hex.EncodeToString(sum[:])
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	if err := s.db.SetPassword(ctx, req.UID, hash); err != nil {
-		httpError(w, 500, err.Error())
-		return
-	}
-	status := "clear"
-	if hash != "" {
-		status = "set"
-	}
-	_ = s.db.AuditLogWrite(ctx, adminOf(r), "player_password", strconv.FormatInt(req.UID, 10), status)
-	writeJSON(w, map[string]any{"ok": true, "password_set": hash != ""})
-}
 
 // ---- 玩家绑定 IP（与 gateway 共用 gateway_ip_uids.json） ----
 

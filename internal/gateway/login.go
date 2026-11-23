@@ -24,7 +24,6 @@ import (
 	"rf4server/internal/metrics"
 	"rf4server/internal/portal"
 	"rf4server/internal/proto"
-	"rf4server/internal/store"
 )
 
 // 指标（NewLoginServer 里注册；nil 时为 no-op 计数器）。
@@ -181,11 +180,6 @@ func (s *LoginServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if userid <= 0 {
 		userid, _ = s.nextUserid(r.Context())
 	}
-	// 客户端带 login/password 凭据时校验 profile 密码；无凭据请求保持原有放行逻辑。
-	if reason := s.passwordRejectReason(r, userid); reason != "" {
-		s.rejectLogin(w, r, reason)
-		return
-	}
 	info := TokenInfo{Userid: userid, IssuedAt: time.Now().Unix(), Region: s.cfg.Region}
 	ttl := time.Duration(s.cfg.TokenTTL) * 24 * time.Hour
 	expires := time.Now().Add(ttl).Unix()
@@ -241,75 +235,6 @@ func (s *LoginServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 		"method", r.Method, "request_uri", r.RequestURI, "path", r.URL.Path,
 		"raw_path", r.URL.RawPath, "remote", r.RemoteAddr,
 		"userid", userid, "region", s.cfg.Region, "realtime", s.cfg.AdvertiseHost)
-}
-
-// profileDB 返回共享主库句柄；内存模式（MemStore）无 profile 表，返回 nil。
-func (s *LoginServer) profileDB() *store.DB {
-	storage, ok := s.store.(*SQLiteStore)
-	if !ok {
-		return nil
-	}
-	return storage.DB
-}
-
-// passwordRejectReason 校验客户端登录 URL query 中的 login/password 凭据。
-// 返回空串表示放行：无凭据、玩家免密（password_sha1 为空）或密码匹配；
-// 非空为拒绝原因，只写服务端日志，不回传给客户端。
-//
-// 按 PR71 抓包结论，官服客户端会在登录 URL 上带
-// ?login=<明文用户名>&password=<SHA1 小写 hex>；本简化方案不建账号体系，
-// 只在 profile 表里存哈希：按用户名找到 uid 后校验，找不到则回退当前 userid。
-func (s *LoginServer) passwordRejectReason(r *http.Request, userid int64) string {
-	login := strings.TrimSpace(r.URL.Query().Get("login"))
-	password := strings.TrimSpace(r.URL.Query().Get("password"))
-	if login == "" || password == "" {
-		return ""
-	}
-	db := s.profileDB()
-	if db == nil {
-		return ""
-	}
-	ctx := r.Context()
-	uid, err := db.FindUIDByName(ctx, login)
-	if err != nil {
-		s.log.Warn("按用户名查 uid 失败，回退当前 userid", "err", err)
-	}
-	if uid <= 0 {
-		uid = userid
-	}
-	hash, err := db.GetPasswordSHA1(ctx, uid)
-	if err != nil {
-		return "读取玩家密码失败"
-	}
-	if hash == "" {
-		return "" // 免密：照旧放行
-	}
-	if !strings.EqualFold(hash, password) {
-		return "密码不匹配"
-	}
-	return ""
-}
-
-// rejectLogin 返回官服风格失败响应，不区分具体原因（客户端统一显示用户名或密码错误）。
-// HTTPS 通道返回 <logon success="false">，旧版明文兼容口按客户端约定返回 <response>。
-func (s *LoginServer) rejectLogin(w http.ResponseWriter, r *http.Request, reason string) {
-	loginErrors.Inc()
-	// 不记录密码与哈希，只记原因和用户名，便于排查误拦截。
-	s.log.Warn("登录被拒", "reason", reason, "remote", r.RemoteAddr,
-		"login", r.URL.Query().Get("login"))
-	body := `<logon success="false"></logon>`
-	contentType := "text/plain; charset=utf-8"
-	if r.TLS == nil {
-		body = `<?xml version="1.0" encoding="UTF-8"?><response success="false"></response>`
-		contentType = "text/xml; charset=utf-8"
-	}
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Pragma", "no-cache")
-	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
-	w.Header().Set("Connection", "close")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(body))
 }
 
 func (s *LoginServer) nextUserid(ctx context.Context) (int64, error) {
