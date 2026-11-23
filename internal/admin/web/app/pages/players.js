@@ -164,6 +164,50 @@ function profile(p, reload, setDirty) {
   const hh = p.happy_hour || {};
   const hhText = hh.enabled === false ? '欢乐时光已在「玩法规则」里关闭。' : !hh.qualified ? '开通会员后可以享受欢乐时光加成。'
     : hh.unlimited ? '永久会员，欢乐时光一直有效。' : `欢乐时光有效，剩余约 ${Math.ceil((hh.remaining_seconds || 0) / 60)} 分钟。`;
+  // IP 绑定：与 gateway 共用映射，独立于档案保存。
+  const ipBody = h('tbody');
+  const newIp = h('input', { class: 'input', placeholder: '例如 192.168.1.9', style: { width: '180px' } });
+  const newUid = h('input', { class: 'input num', type: 'number', min: '1', placeholder: 'UID', style: { width: '120px' } });
+  const ipCount = h('span', { class: 'badge' });
+  async function reloadBindings() {
+    ipBody.replaceChildren(h('tr', {}, h('td', { colspan: 3 }, loading(3))));
+    try {
+      const r = await api('/api/players/ip-bindings');
+      const rows = r.bindings || [];
+      ipCount.textContent = String(rows.length) + ' 条';
+      ipBody.replaceChildren(...(rows.length ? rows.map((b) => {
+        const uidInput = h('input', { class: 'input num', type: 'number', min: '1', value: String(b.uid), style: { width: '120px' } });
+        return h('tr', {},
+          h('td', { class: 'mono', text: b.ip }),
+          h('td', {}, uidInput),
+          h('td', {}, h('div', { class: 'row', style: { gap: '6px' } },
+            btn('保存', async () => {
+              const uid = +uidInput.value;
+              if (!Number.isInteger(uid) || uid <= 0) { toast('UID 必须是正整数', 'bad'); return; }
+              try { await post('/api/players/ip-binding', { ip: b.ip, uid }); toast('已保存 IP 绑定'); reloadBindings(); } catch (e) { toast(errText(e), 'bad'); }
+            }, 'primary sm'),
+            btn('删除', async () => {
+              if (!(await confirmDialog({ title: `删除 IP 绑定「${b.ip}」？`, desc: '删除后这个 IP 不再强制绑定到该角色。', confirm: '删除', danger: true }))) return;
+              try { await post('/api/players/ip-binding', { ip: b.ip, uid: 0 }); toast('已删除 IP 绑定'); reloadBindings(); } catch (e) { toast(errText(e), 'bad'); }
+            }, 'danger sm'))));
+      }) : [h('tr', {}, h('td', { colspan: 3 }, empty('还没有 IP 绑定')))]));
+    } catch (e) { ipBody.replaceChildren(h('tr', {}, h('td', { colspan: 3 }, empty('读取失败', errText(e))))); }
+  }
+  const ipSection = section({
+    title: 'IP 绑定',
+    desc: '绑定后该 IP 登录会强制进入指定角色；删除映射即取消绑定。改完需重启 gateway 才生效。',
+    actions: ipCount,
+    body: h('div', { class: 'stack' },
+      h('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, newIp, newUid,
+        btn('新增绑定', async () => {
+          const ip = newIp.value.trim(), uid = +newUid.value;
+          if (!ip || ip.includes('/') || ip.includes('\\')) { toast('IP 不能为空且不能包含路径分隔符', 'bad'); return; }
+          if (!Number.isInteger(uid) || uid <= 0) { toast('UID 必须是正整数', 'bad'); return; }
+          try { await post('/api/players/ip-binding', { ip, uid }); toast('已新增 IP 绑定'); newIp.value = ''; newUid.value = ''; reloadBindings(); } catch (e) { toast(errText(e), 'bad'); }
+        }, 'primary sm', { icon: 'plus' })),
+      h('div', { class: 'table-wrap', style: { maxHeight: '36vh' } }, h('table', { class: 'table' },
+        h('thead', {}, h('tr', {}, h('th', { text: 'IP' }), h('th', { text: '绑定 UID' }), h('th', {}))), ipBody))),
+  });
   reloadBindings();
   // 危险操作：彻底删除玩家。
   const dangerBlock = h('div', { style: { borderTop: '1px solid var(--line)', marginTop: '14px', paddingTop: '14px' } },

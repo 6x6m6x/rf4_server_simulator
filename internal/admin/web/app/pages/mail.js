@@ -12,7 +12,7 @@ export default async function mail(params) {
   // 收件人：支持一次选多人；从玩家页带 params[0] 进入时预填一位。
   const recipients = [];
   // 从玩家页跳转可能带进 "null" 之类的脏参数，先校验再预填，避免拼出 nullnull。
-  if (params[0] && params[0] !== 'null' && Number(params[0]) > 0) {
+  if (params[0] != null && String(params[0]) !== 'null' && Number(params[0]) > 0) {
     try {
       const p = await api('/api/players/detail?uid=' + encodeURIComponent(params[0]));
       // detail 也可能返回空对象或空字段，校验后再加入收件人。
@@ -121,7 +121,12 @@ export default async function mail(params) {
   const loadTemplates = async () => {
     try {
       const data = await api('/api/mail/templates');
-      templates = Array.isArray(data.templates) ? data.templates : [];
+      templates = Array.isArray(data.templates) ? data.templates.map((x) => ({
+        ...x,
+        name: x.name && x.name !== 'null' ? x.name : '未命名模板',
+        subject: x.subject && x.subject !== 'null' ? x.subject : '',
+        body: x.body && x.body !== 'null' ? x.body : '',
+      })) : [];
     } catch (e) { templates = []; toast('加载模板失败：' + errText(e), 'bad'); }
     drawTemplates();
   };
