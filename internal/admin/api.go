@@ -78,6 +78,7 @@ func NewServer(cfg config.Admin, db *store.DB, log logger, webFS fs.FS) *Server 
 	mux.HandleFunc("POST /api/tunables", auth(s.handleTunableSet))
 	mux.HandleFunc("POST /api/skill_gain_mode", auth(s.handleSkillGainModeSet))
 	mux.HandleFunc("POST /api/fish_tv_test", auth(s.handleFishTVTest))
+	mux.HandleFunc("POST /api/players/say", auth(s.handlePlayerSay))
 	mux.HandleFunc("GET /api/players", auth(s.handlePlayers))
 	mux.HandleFunc("GET /api/players/detail", auth(s.handlePlayerDetail))
 	mux.HandleFunc("POST /api/players/update", auth(s.handlePlayerUpdate))
@@ -1007,6 +1008,28 @@ func (s *Server) handleGrantItem(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleFishTVTest 将鱼汛通道测试指令写入共享队列，由主服务器推送到客户端
+// handlePlayerSay 管理后台代替指定玩家发言：走 admin_queue 广播给全体在线玩家。
+func (s *Server) handlePlayerSay(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UID  int64  `json:"uid"`
+		Text string `json:"text"`
+		Kind int64  `json:"kind"`
+	}
+	if err := readJSON(r, &req); err != nil || req.UID <= 0 || strings.TrimSpace(req.Text) == "" {
+		httpError(w, 400, "需要 uid 和非空消息内容")
+		return
+	}
+	if req.Kind < 0 || req.Kind > 2 {
+		httpError(w, 400, "发言样式只能是 0/1/2")
+		return
+	}
+	_ = s.db.QueuePush(r.Context(), mustJSON(map[string]any{
+		"op": "player_say", "uid": req.UID, "text": req.Text, "kind": req.Kind,
+	}))
+	_ = s.db.AuditLogWrite(r.Context(), adminOf(r), "player_say", strconv.FormatInt(req.UID, 10), req.Text)
+	writeJSON(w, map[string]any{"ok": true})
+}
+
 // 聊天窗，用于探测 24/27..31 通道、401.f0 消息类型和 401.f4 模板参数。
 func (s *Server) handleFishTVTest(w http.ResponseWriter, r *http.Request) {
 	var req struct {

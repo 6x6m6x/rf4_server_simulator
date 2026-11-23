@@ -322,6 +322,11 @@ func buildChatEchoPush(loc, msg string, uid uint64, users uint32) *proto.Value {
 	return buildChatEchoPushKind(0, loc, msg, uid, users)
 }
 
+// formatAdminSystemChat 系统消息末尾附加全角空格+5星（管理员样式）。
+func formatAdminSystemChat(msg string) string {
+	return msg + "　*****"
+}
+
 // buildChatEchoPushKind 与 buildChatEchoPush 相同，但可指定 401.f0 消息类型。
 // ★ 玩家发言只能用 0/1/2：其它 kind 是官方钓获播报模板（如 25=超级稀有鱼{0},{1}、
 //   26=稀有鱼{0},{1}），会把玩家发言渲染成固定模板文本，故禁用。
@@ -800,7 +805,7 @@ func hSocialPublic(ctx *Ctx) ([]byte, bool) {
 	}
 	outMsg := msg
 	if kind == 2 && srv.tunableF("admin_chat_star_suffix", 1) != 0 {
-		outMsg = msg + " *****"
+		outMsg = formatAdminSystemChat(msg)
 	}
 	for _, sess := range peers {
 		sess.Push(24, 27, buildChatEchoPushKind(kind, loc, outMsg, uint64(ctx.Sess.Userid), uint32(users)))

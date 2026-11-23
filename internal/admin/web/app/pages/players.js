@@ -210,6 +210,28 @@ function profile(p, reload, setDirty) {
         h('thead', {}, h('tr', {}, h('th', { text: 'IP' }), h('th', { text: '绑定 UID' }), h('th', {}))), ipBody))),
   });
   reloadBindings();
+  // 代发消息：以这个玩家的身份向全服公聊发一条消息。
+  const sayText = h('textarea', { class: 'textarea', rows: 3, placeholder: '输入要代替他发送的消息', style: { width: '100%' } });
+  const sayKind = h('select', { class: 'select' },
+    h('option', { value: '0', text: '普通' }),
+    h('option', { value: '1', text: 'ID带中括号' }),
+    h('option', { value: '2', text: '管理员黄（末尾自动加　*****）' }));
+  const saySection = section({
+    title: '代发公聊消息',
+    desc: '以该玩家身份向全体在线玩家发一条公聊，立即生效。',
+    body: h('div', { class: 'stack' },
+      h('div', { class: 'field' }, h('label', { text: '消息内容' }), sayText),
+      h('div', { class: 'field' }, h('label', { text: '发言样式' }), sayKind),
+      h('div', {}, btn('发送', async () => {
+        const text = sayText.value.trim();
+        if (!text) { toast('请输入消息内容', 'bad'); return; }
+        if (!(await confirmDialog({ title: `代替「${p.name}」发公聊？`, desc: text, confirm: '发送' }))) return;
+        try {
+          await post('/api/players/say', { uid: p.uid, text, kind: +sayKind.value });
+          toast('已发送，约 2 秒内送达'); sayText.value = '';
+        } catch (e) { toast(errText(e), 'bad'); }
+      }, 'primary sm', { icon: 'mail' }))),
+  });
   // 危险操作：彻底删除玩家。
   const dangerBlock = h('div', { style: { borderTop: '1px solid var(--line)', marginTop: '14px', paddingTop: '14px' } },
     h('h3', { class: 'small', style: { color: 'var(--bad)', margin: '0 0 6px' }, text: '危险操作' }),
@@ -234,7 +256,7 @@ function profile(p, reload, setDirty) {
       form.row({ key: 'bank', label: '银行存款', kind: 'float', min: 0 }, cents(p.bank))),
     h('div', {},
       h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '8px 0 10px' }, text: '会员' }),
-      h('div', { class: 'stack' }, h('div', { class: 'row' }, seg, expWrap), h('div', { class: 'muted small', text: hhText }))), ipSection, dangerBlock);
+      h('div', { class: 'stack' }, h('div', { class: 'row' }, seg, expWrap), h('div', { class: 'muted small', text: hhText }))), ipSection, saySection, dangerBlock);
 }
 
 // ---------- 背包 ----------

@@ -1118,6 +1118,19 @@ func (s *Server) execAdminCmd(cmd *AdminCommand) {
 		s.fishZoneCache = nil
 		s.fishZoneMu.Unlock()
 		s.log.Info("管理指令：区域鱼种名册已刷新")
+	case "player_say":
+		// 管理后台代替指定玩家发言：广播给所有在线会话，发送者显示为 cmd.UID。
+		// kind 限 0/1/2（其它是钓获播报模板，会渲染成固定文本）。
+		kind := int(cmd.Kind)
+		if kind < 0 || kind > 2 {
+			kind = 0
+		}
+		text := cmd.Text
+		if kind == 2 && s.tunableF("admin_chat_star_suffix", 1) != 0 {
+			text = formatAdminSystemChat(text)
+		}
+		s.broadcastChatProbe(nil, uint64(cmd.UID), 27, kind, text, nil)
+		s.log.Info("管理指令：代玩家发言", "uid", cmd.UID, "kind", kind, "text", text)
 	case "fish_tv_test":
 		// 鱼汛通道探测：向指定玩家（0=全部在线会话）推送一条测试消息。
 		var targets []*Session
