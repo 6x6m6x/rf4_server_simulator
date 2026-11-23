@@ -139,6 +139,7 @@ function profile(p, reload, setDirty) {
         silver: Math.round(+form.value('silver') * 100), gold: Math.round(+form.value('gold') * 100), bank: Math.round(+form.value('bank') * 100) };
       // 用户补丁（旧后台 UI 迁移）：头像 URL 随档案一起保存。
       if (avatarField) body.avatar = avatarField.input.value.trim();
+      if ('role' in v) body.role = +form.value('role');
       const m = +memberField.input.value;
       const exp = m === 1 && expInput.value ? Math.floor(new Date(expInput.value).getTime() / 1000) : 0;
       if ('membership' in v || 'membership_exp' in v) {
@@ -221,6 +222,8 @@ function profile(p, reload, setDirty) {
     h('div', {},
       h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '4px 0 4px' }, text: '角色' }),
       h('div', { class: 'field', style: { marginBottom: '6px' } }, h('label', { text: '头像（图片 URL 或本地上传）' }), avatarRow),
+      form.row({ key: 'role', label: '角色', kind: 'int', min: 0, max: 255,
+        help: '0=普通玩家；1=管理员（发言黄色字体 + 名字后管理员标识）。改完对方需重登或重开社交才刷新。' }, p.role || 0),
       form.row({ key: 'name', label: '昵称', kind: 'string', required: true }, p.name),
       form.row({ key: 'level', label: '等级', kind: 'int', min: 1, max: 58, unit: '级' }, p.level),
       form.row({ key: 'xp', label: '累计经验', kind: 'int', min: 0, help: '等级和经验要对得上，否则游戏里经验条会显示异常。' }, p.xp)),

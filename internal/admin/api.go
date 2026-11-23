@@ -800,6 +800,7 @@ func (s *Server) handlePlayerUpdate(w http.ResponseWriter, r *http.Request) {
 		Membership    *int64  `json:"membership"`
 		MembershipExp *int64  `json:"membership_exp"`
 		Avatar        *string `json:"avatar"`
+		Role          *int64  `json:"role"` // 玩家角色：0=普通，1=管理员（24/19 资料卡 f3 下发给客户端）
 	}
 	if err := readJSON(r, &req); err != nil || req.UID == 0 {
 		httpError(w, 400, "参数错误")
@@ -841,10 +842,15 @@ func (s *Server) handlePlayerUpdate(w http.ResponseWriter, r *http.Request) {
 	if req.Avatar != nil {
 		avatar = strings.TrimSpace(*req.Avatar)
 	}
+	role := apply(p.Role, req.Role)
+	if role < 0 || role > 255 {
+		httpError(w, 400, "角色值需在 0~255 之间（24/19 资料卡 f3 是单字节）")
+		return
+	}
 	avatarSet := ""
 	args := []any{name, lvl, xpAfter,
 		apply(p.Silver, req.Silver), apply(p.Gold, req.Gold), apply(p.Bank, req.Bank),
-		membership, exp}
+		membership, exp, role}
 	if s.db.HasAvatarColumn() {
 		avatarSet = ", avatar=?"
 		args = append(args, avatar)
@@ -852,7 +858,7 @@ func (s *Server) handlePlayerUpdate(w http.ResponseWriter, r *http.Request) {
 	args = append(args, float64(time.Now().Unix()), req.UID)
 	_, err = s.db.SQL.ExecContext(ctx, `
 		UPDATE profile SET name=?, level=?, xp=?, silver=?, gold=?, bank=?,
-		 membership=?, membership_exp=?`+avatarSet+`, updated_ts=?
+		 membership=?, membership_exp=?, role=?`+avatarSet+`, updated_ts=?
 		WHERE uid=?`, args...)
 	if err != nil {
 		httpError(w, 500, err.Error())
