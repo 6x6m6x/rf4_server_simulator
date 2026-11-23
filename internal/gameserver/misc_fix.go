@@ -323,24 +323,16 @@ func buildChatEchoPush(loc, msg string, uid uint64, users uint32) *proto.Value {
 }
 
 // buildChatEchoPushKind 与 buildChatEchoPush 相同，但可指定 401.f0 消息类型。
-// 客户端按 kind 上色：0=普通、3=蓝、25=深橘红、26=橘黄（实测）。
+// ★ 玩家发言只能用 0/1/2：其它 kind 是官方钓获播报模板（如 25=超级稀有鱼{0},{1}、
+//   26=稀有鱼{0},{1}），会把玩家发言渲染成固定模板文本，故禁用。
+//   0=普通、1=id带中括号、2=管理员同款黄（id被客户端掩码成 *****）。
 func buildChatEchoPushKind(kind int, loc, msg string, uid uint64, users uint32) *proto.Value {
-	return buildChatEchoPushKindKV(kind, loc, msg, uid, users, nil)
-}
-
-// buildChatEchoPushKindKV 同上，可带 401.f4 KV 参数。
-// kind=2 管理员样式把 f2 渲染成 *****，尝试用 KV 键1 传真实昵称供客户端显示。
-func buildChatEchoPushKindKV(kind int, loc, msg string, uid uint64, users uint32, nameKV *proto.Value) *proto.Value {
-	f4 := proto.Null()
-	if nameKV != nil {
-		f4 = nameKV
-	}
 	msgObj := wiregen.MustMakeObj("lfbdbaffeai", map[int]*proto.Value{
 		0: proto.U32(uint32(kind)),
 		1: proto.StrVal(msg),
 		2: proto.U32(uint32(uid)),
 		3: proto.U64(uint64(proto.WindowsFiletimeNow())),
-		4: f4,
+		4: proto.Null(),
 	})
 	return proto.Args524(msgObj, proto.StrVal(loc), proto.U32(users))
 }
@@ -796,31 +788,24 @@ func hSocialPublic(ctx *Ctx) ([]byte, bool) {
 	if int64(len(peers)) > users {
 		users = int64(len(peers))
 	}
-	// 玩家自定义发言颜色：profile.role>0 时作为 401.f0 kind 下发（客户端按 kind 上色）。
-	// 实测：kind=1 → id 加中括号；kind=2 → 管理员同款黄色但 id 被客户端掩码成 *****。
-	// kind=2 时客户端不查资料卡名字，故把真实昵称拼进文本前缀，让名字以管理员黄显示。
-	// tunable admin_chat_name_prefix=0 可关闭该前缀。
+	// 玩家自定义发言样式：profile.role 作为 401.f0 kind（仅 0/1/2 合法）。
+	// 实测：0=普通；1=id带中括号；2=管理员同款黄（id被客户端掩码成 *****）。
+	// 其它 kind 是钓获播报模板（25=超级稀有鱼0克等），会显示固定文本，故拒绝。
+	// kind=2 时客户端不显示名字，把真实昵称拼进文本前缀（tunable 可关）。
 	kind := 0
 	name := ""
-	if p, err := srv.DB.GetProfile(srv.dbCtx(), int64(ctx.Sess.Userid)); err == nil && p != nil && p.Role > 0 {
-		kind = int(p.Role)
+	if p, err := srv.DB.GetProfile(srv.dbCtx(), int64(ctx.Sess.Userid)); err == nil && p != nil {
+		if p.Role == 1 || p.Role == 2 {
+			kind = int(p.Role)
+		}
 		name = p.Name
 	}
 	outMsg := msg
-	var nameKV *proto.Value
-	if kind == 2 && name != "" {
-		// f4 KV 键1 = 展示文本，尝试让客户端用它替代 ***** 显示真实昵称。
-		// tunable admin_chat_name_kv=0 可关闭（若导致消息不显示）。
-		if srv.tunableF("admin_chat_name_kv", 1) != 0 {
-			nameKV = proto.KVList(proto.KVEntry{Key: 1, Val: proto.StrVal(name)})
-		}
-		// 文本前缀兜底：KV 不生效时名字仍以管理员黄显示（tunable 可关）。
-		if srv.tunableF("admin_chat_name_prefix", 1) != 0 {
-			outMsg = name + ": " + msg
-		}
+	if kind == 2 && name != "" && srv.tunableF("admin_chat_name_prefix", 1) != 0 {
+		outMsg = name + ": " + msg
 	}
 	for _, sess := range peers {
-		sess.Push(24, 27, buildChatEchoPushKindKV(kind, loc, outMsg, uint64(ctx.Sess.Userid), uint32(users), nameKV))
+		sess.Push(24, 27, buildChatEchoPushKind(kind, loc, outMsg, uint64(ctx.Sess.Userid), uint32(users)))
 	}
 	return nil, true // fire-and-forget，不返回响应
 }
