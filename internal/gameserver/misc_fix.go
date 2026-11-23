@@ -791,18 +791,16 @@ func hSocialPublic(ctx *Ctx) ([]byte, bool) {
 	// 玩家自定义发言样式：profile.role 作为 401.f0 kind（仅 0/1/2 合法）。
 	// 实测：0=普通；1=id带中括号；2=管理员同款黄（id被客户端掩码成 *****）。
 	// 其它 kind 是钓获播报模板（25=超级稀有鱼0克等），会显示固定文本，故拒绝。
-	// kind=2 时客户端不显示名字，把真实昵称拼进文本前缀（tunable 可关）。
+	// kind=2 用作发布系统消息：不显示真实昵称，文本末尾自动附加 *****。
 	kind := 0
-	name := ""
 	if p, err := srv.DB.GetProfile(srv.dbCtx(), int64(ctx.Sess.Userid)); err == nil && p != nil {
 		if p.Role == 1 || p.Role == 2 {
 			kind = int(p.Role)
 		}
-		name = p.Name
 	}
 	outMsg := msg
-	if kind == 2 && name != "" && srv.tunableF("admin_chat_name_prefix", 1) != 0 {
-		outMsg = name + ": " + msg
+	if kind == 2 && srv.tunableF("admin_chat_star_suffix", 1) != 0 {
+		outMsg = msg + " *****"
 	}
 	for _, sess := range peers {
 		sess.Push(24, 27, buildChatEchoPushKind(kind, loc, outMsg, uint64(ctx.Sess.Userid), uint32(users)))

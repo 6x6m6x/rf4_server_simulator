@@ -223,7 +223,7 @@ function profile(p, reload, setDirty) {
       h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '4px 0 4px' }, text: '角色' }),
       h('div', { class: 'field', style: { marginBottom: '6px' } }, h('label', { text: '头像（图片 URL 或本地上传）' }), avatarRow),
       form.row({ key: 'role', label: '发言样式', kind: 'int', min: 0, max: 2,
-        help: '0=普通；1=ID带中括号；2=管理员同款黄色（客户端会把ID显示成*****，真实昵称会拼在消息开头）。其它值无效。' }, p.role || 0),
+        help: '0=普通；1=ID带中括号；2=管理员同款黄色系统消息（ID显示*****，文本末尾自动附加*****）。其它值无效。' }, p.role || 0),
       form.row({ key: 'name', label: '昵称', kind: 'string', required: true }, p.name),
       form.row({ key: 'level', label: '等级', kind: 'int', min: 1, max: 58, unit: '级' }, p.level),
       form.row({ key: 'xp', label: '累计经验', kind: 'int', min: 0, help: '等级和经验要对得上，否则游戏里经验条会显示异常。' }, p.xp)),
