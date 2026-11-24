@@ -43,7 +43,7 @@ func New(db *store.DB, resolve func(string) int64) *Server {
 	s.mux.HandleFunc("GET /portal/api/profile", s.profile)
 	s.mux.HandleFunc("GET /portal/api/membership", s.membership)
 	s.mux.HandleFunc("POST /portal/api/membership/purchase", s.purchase)
-	// 服务中心：改名/头像，单价 20 金币（本地补丁）。
+	// 服务中心：改名/头像，单价 5000 金分（本地补丁）。
 	s.mux.HandleFunc("GET /portal/api/customize", s.customizeStatus)
 	s.mux.HandleFunc("POST /portal/api/customize/name", s.customizeName)
 	s.mux.HandleFunc("POST /portal/api/customize/avatar", s.customizeAvatar)

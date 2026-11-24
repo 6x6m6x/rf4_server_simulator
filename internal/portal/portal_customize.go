@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// 服务中心自定义：改名/头像，单价 20 金币（见 store.PortalCustomizePriceGold）。
+// 服务中心自定义：改名/头像，单价 5000 金分（50 金币）（见 store.PortalCustomizePriceGold）。
 // 头像文件保存在主库同级的 avatars/ 目录，与后台头像共用同一份文件，
 // 通过 /portal/avatars/<uid><ext> 对外提供（客户端资料卡读 /avatars/ 亦可命中后台路由）。
 
@@ -33,7 +33,7 @@ func (s *Server) customizeStatus(w http.ResponseWriter, r *http.Request) {
 	write(w, map[string]any{"goldMinor": gold, "priceGold": price})
 }
 
-// POST /portal/api/customize/name {name} → 扣 20 金币改名
+// POST /portal/api/customize/name {name} → 扣 5000 金分改名
 func (s *Server) customizeName(w http.ResponseWriter, r *http.Request) {
 	uid, ok := s.identity(w, r)
 	if !ok {
@@ -61,7 +61,7 @@ func (s *Server) customizeName(w http.ResponseWriter, r *http.Request) {
 	write(w, map[string]any{"ok": true, "name": req.Name, "goldMinor": gold, "priceGold": price})
 }
 
-// POST /portal/api/customize/avatar （multipart: file）→ 扣 20 金币换头像
+// POST /portal/api/customize/avatar （multipart: file）→ 扣 5000 金分换头像
 func (s *Server) customizeAvatar(w http.ResponseWriter, r *http.Request) {
 	uid, ok := s.identity(w, r)
 	if !ok {

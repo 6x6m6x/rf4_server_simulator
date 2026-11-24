@@ -26,7 +26,7 @@ func TestPortalIdentityPurchaseReplayAndLogout(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.SQL.Exec(`UPDATE profile SET gold=500`); err != nil {
+	if _, err := db.SQL.Exec(`UPDATE profile SET gold=10000`); err != nil {
 		t.Fatal(err)
 	}
 	s := New(db, func(remote string) int64 {
@@ -79,7 +79,7 @@ func TestPortalIdentityPurchaseReplayAndLogout(t *testing.T) {
 	}
 	p, err := db.GetProfile(context.Background(), 42)
 	other, _ := db.GetProfile(context.Background(), 43)
-	if err != nil || p.Gold != 400 || p.MembershipExp <= time.Now().Unix() || other.Gold != 500 {
+	if err != nil || p.Gold != 5000 || p.MembershipExp <= time.Now().Unix() || other.Gold != 10000 {
 		t.Fatalf("purchase identity/replay failed: %+v %+v %v", p, other, err)
 	}
 	if w := call("DELETE", "/portal/api/session", token, "", own, ""); w.Code != 200 {

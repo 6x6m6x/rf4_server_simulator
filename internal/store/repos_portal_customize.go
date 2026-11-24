@@ -7,10 +7,10 @@ import (
 	"fmt"
 )
 
-// PortalCustomizePriceGold 服务中心改名/改头像单价：20 金币（金币以分计，2000）。
-const PortalCustomizePriceGold = 2000
+// PortalCustomizePriceGold 服务中心改名/改头像单价：5000 金分（= 50 金币）。
+const PortalCustomizePriceGold = 5000
 
-// PortalRename 玩家在服务中心改名：扣 20 金币，写新昵称与流水。
+// PortalRename 玩家在服务中心改名：扣 5000 金分（50 金币），写新昵称与流水。
 // 名称限制由调用方校验；这里再兜底一次非空与长度。
 func (d *DB) PortalRename(ctx context.Context, uid int64, name string, now int64) error {
 	if uid <= 0 || len([]rune(name)) == 0 || len([]rune(name)) > 24 {
@@ -29,7 +29,7 @@ func (d *DB) PortalRename(ctx context.Context, uid int64, name string, now int64
 		return err
 	}
 	if gold < PortalCustomizePriceGold {
-		return fmt.Errorf("金币不足，需要 20 金币")
+		return fmt.Errorf("金币不足，需要 5000 金分（50 金币）")
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE profile SET name=?,gold=gold-?,updated_ts=? WHERE uid=?`,
 		name, PortalCustomizePriceGold, float64(now), uid); err != nil {
@@ -42,7 +42,7 @@ func (d *DB) PortalRename(ctx context.Context, uid int64, name string, now int64
 	return tx.Commit()
 }
 
-// PortalSetAvatar 玩家在服务中心改头像：扣 20 金币，写头像 URL 与流水。
+// PortalSetAvatar 玩家在服务中心改头像：扣 5000 金分（50 金币），写头像 URL 与流水。
 func (d *DB) PortalSetAvatar(ctx context.Context, uid int64, avatar string, now int64) error {
 	if uid <= 0 || avatar == "" || len(avatar) > 512 {
 		return fmt.Errorf("头像地址无效")
@@ -60,7 +60,7 @@ func (d *DB) PortalSetAvatar(ctx context.Context, uid int64, avatar string, now 
 		return err
 	}
 	if gold < PortalCustomizePriceGold {
-		return fmt.Errorf("金币不足，需要 20 金币")
+		return fmt.Errorf("金币不足，需要 5000 金分（50 金币）")
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE profile SET avatar=?,gold=gold-?,updated_ts=? WHERE uid=?`,
 		avatar, PortalCustomizePriceGold, float64(now), uid); err != nil {

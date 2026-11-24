@@ -67,14 +67,14 @@ func TestMembershipPurchaseRenewalExpiryAndReplay(t *testing.T) {
 	if _, err := db.EnsureProfile(ctx, 42); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL.Exec(`UPDATE profile SET gold=2000 WHERE uid=42`); err != nil {
+	if _, err := db.SQL.Exec(`UPDATE profile SET gold=100000 WHERE uid=42`); err != nil {
 		t.Fatal(err)
 	}
 	first, err := db.PurchaseMembership(ctx, 42, "premium_1d", "first-request", now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Replayed || first.ChargedGold != 100 || first.ExpiresAt != now+86400 {
+	if first.Replayed || first.ChargedGold != 5000 || first.ExpiresAt != now+86400 {
 		t.Fatalf("首购不符: %+v", first)
 	}
 	again, err := db.PurchaseMembership(ctx, 42, "premium_1d", "first-request", now+3600)
@@ -103,7 +103,7 @@ func TestMembershipPurchaseRenewalExpiryAndReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.Membership.Active || status.Membership.ExpiresAt != second.ExpiresAt || status.Balance.Gold != 1400 || status.Membership.XPBonusRate != 1 {
+	if !status.Membership.Active || status.Membership.ExpiresAt != second.ExpiresAt || status.Balance.Gold != 70000 || status.Membership.XPBonusRate != 1 {
 		t.Fatalf("重启丢失会员/余额: %+v", status)
 	}
 	status, err = reopened.GetMembershipStatus(ctx, 42, second.ExpiresAt)
@@ -146,7 +146,7 @@ func TestMembershipPurchaseInsufficientFundsAndRollback(t *testing.T) {
 	if _, err := db.PurchaseMembership(ctx, 42, "premium_1d", "balance-request", now); membershipCode(err) != "insufficient_gold" {
 		t.Fatalf("未拦截余额不足: %v", err)
 	}
-	if _, err := db.SQL.Exec(`UPDATE profile SET gold=500 WHERE uid=42;
+	if _, err := db.SQL.Exec(`UPDATE profile SET gold=10000 WHERE uid=42;
         CREATE TRIGGER fail_membership_queue BEFORE INSERT ON admin_queue BEGIN SELECT RAISE(ABORT,'queue unavailable'); END`); err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestMembershipPurchaseInsufficientFundsAndRollback(t *testing.T) {
 		t.Fatal("队列失败未回滚交易")
 	}
 	p, err := db.GetProfile(ctx, 42)
-	if err != nil || p.Gold != 500 || p.Membership != 0 || p.MembershipExp != 0 {
+	if err != nil || p.Gold != 10000 || p.Membership != 0 || p.MembershipExp != 0 {
 		t.Fatalf("失败后扣款/激活: %+v %v", p, err)
 	}
 	for _, table := range []string{"membership_order", "txn", "admin_queue"} {
@@ -178,7 +178,7 @@ func TestMembershipConcurrentProcessesChargeOnce(t *testing.T) {
 	if _, err := db.EnsureProfile(ctx, 42); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL.Exec(`UPDATE profile SET gold=500 WHERE uid=42`); err != nil {
+	if _, err := db.SQL.Exec(`UPDATE profile SET gold=10000 WHERE uid=42`); err != nil {
 		t.Fatal(err)
 	}
 	other, err := Open(db.Path)
@@ -206,7 +206,7 @@ func TestMembershipConcurrentProcessesChargeOnce(t *testing.T) {
 		}
 	}
 	p, err := db.GetProfile(ctx, 42)
-	if err != nil || p.Gold != 400 || replayed != 1 {
+	if err != nil || p.Gold != 5000 || replayed != 1 {
 		t.Fatalf("重复扣款: %+v replayed=%d err=%v", p, replayed, err)
 	}
 	assertCount(t, db, `SELECT COUNT(*) FROM membership_order`, 1)

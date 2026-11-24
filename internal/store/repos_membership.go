@@ -18,9 +18,9 @@ type MembershipPlan struct {
 
 func MembershipPlans() []MembershipPlan {
 	return []MembershipPlan{
-		{ID: "premium_1d", Name: "高级会员 1 天", Days: 1, PriceGold: 100},
-		{ID: "premium_7d", Name: "高级会员 7 天", Days: 7, PriceGold: 500},
-		{ID: "premium_30d", Name: "高级会员 30 天", Days: 30, PriceGold: 1500},
+		{ID: "premium_1d", Name: "高级会员 1 天", Days: 1, PriceGold: 5000},
+		{ID: "premium_7d", Name: "高级会员 7 天", Days: 7, PriceGold: 25000},
+		{ID: "premium_30d", Name: "高级会员 30 天", Days: 30, PriceGold: 75000},
 	}
 }
 

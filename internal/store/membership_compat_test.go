@@ -9,7 +9,7 @@ func TestMembershipUpgradePreservesUpstreamAndLocalExpiry(t *testing.T) {
 	for _, legacy := range []bool{false, true} {
 		t.Run(map[bool]string{false: "upstream", true: "local"}[legacy], func(t *testing.T) {
 			db := openCatchHistoryDBAtVersion(t, 19)
-			if _, err := db.SQL.Exec(`INSERT INTO profile(uid,name,gold,membership,membership_exp) VALUES(1,'player',500,1,2000000000)`); err != nil {
+			if _, err := db.SQL.Exec(`INSERT INTO profile(uid,name,gold,membership,membership_exp) VALUES(1,'player',10000,1,2000000000)`); err != nil {
 				t.Fatal(err)
 			}
 			if legacy {
@@ -24,7 +24,7 @@ func TestMembershipUpgradePreservesUpstreamAndLocalExpiry(t *testing.T) {
 				}
 			}
 			p, err := db.GetProfile(context.Background(), 1)
-			if err != nil || p.MembershipExp != 2000000000 || p.Gold != 500 {
+			if err != nil || p.MembershipExp != 2000000000 || p.Gold != 10000 {
 				t.Fatalf("upgrade changed profile: %+v %v", p, err)
 			}
 			if _, err := db.PurchaseMembership(context.Background(), 1, "premium_1d", "upgrade-order", 1900000000); err != nil {
@@ -39,7 +39,7 @@ func TestMembershipUpgradePreservesUpstreamAndLocalExpiry(t *testing.T) {
 				t.Fatal(err)
 			}
 			p, err = reopened.GetProfile(context.Background(), 1)
-			if err != nil || p.MembershipExp != 2000086400 || p.Gold != 400 {
+			if err != nil || p.MembershipExp != 2000086400 || p.Gold != 5000 {
 				t.Fatalf("restart changed purchase: %+v %v", p, err)
 			}
 			if err := reopened.SetMembership(context.Background(), 1, 0, 0, "admin", 1900000000); err != nil {

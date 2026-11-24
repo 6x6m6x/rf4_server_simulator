@@ -163,8 +163,8 @@ function profile(p, reload, setDirty) {
   const expWrap = h('div', { class: 'row', hidden: String(p.membership) !== '1' }, h('span', { class: 'muted small', text: '到期时间' }), expInput);
   const seg = segmented([['0', '普通'], ['1', '限时会员'], ['2', '永久会员']], String(p.membership || 0), (v) => { memberField.input.value = v; expWrap.hidden = v !== '1'; form.refresh(); });
   const hh = p.happy_hour || {};
-  const hhText = hh.enabled === false ? '欢乐时光已在「玩法规则」里关闭。' : !hh.qualified ? '开通会员后可以享受欢乐时光加成。'
-    : hh.unlimited ? '永久会员，欢乐时光一直有效。' : `欢乐时光有效，剩余约 ${Math.ceil((hh.remaining_seconds || 0) / 60)} 分钟。`;
+  const hhText = hh.enabled === false ? '欢乐时光已在「玩法规则」里关闭。' : !hh.qualified ? '普通玩家没有欢乐时光；开通会员后每日可享 1 小时（经验+50%/鱼口+10%/金币+50%）。'
+    : `会员欢乐时光有效，今日剩余约 ${Math.ceil((hh.remaining_seconds || 0) / 60)} 分钟（每日 1 小时）。`;
   // IP 绑定：与 gateway 共用映射，独立于档案保存。
   const ipBody = h('tbody');
   const newIp = h('input', { class: 'input', placeholder: '例如 192.168.1.9', style: { width: '180px' } });
