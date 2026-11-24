@@ -112,8 +112,14 @@ func (s *Server) customizeAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dst.Close()
-	// 扣金币并落库；若余额不足，文件已写但数据库不引用，不影响玩家。
-	avatar := "/portal/avatars/" + name
+	// 客户端资料卡拿到的 avatar 必须是完整 URL（相对路径客户端无法解析）。
+	// 用本次请求的 Host 拼绝对地址，头像由 gateway 的 /portal/avatars/ 提供，
+	// 客户端与后台浏览器都能拉到。
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	avatar := scheme + "://" + r.Host + "/portal/avatars/" + name
 	if err := s.db.PortalSetAvatar(r.Context(), uid, avatar, time.Now().Unix()); err != nil {
 		fail(w, 400, err.Error())
 		return
