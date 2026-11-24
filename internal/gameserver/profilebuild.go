@@ -284,20 +284,16 @@ func (s *Server) BuildProfile307W(ctx context.Context, uid int64, wNow int64) (*
 	hhMinutes := int64(0)
 	hhEnd := pass745F2
 	if hh, hhErr := s.DB.GetHappyHourStatus(ctx, uid, time.Now()); hhErr == nil && hh.Qualified {
-		switch {
-		case !hh.Enabled:
+		// 会员专享每日 1 小时：状态 3 下发今日剩余额度倒计时（游戏分钟×24）。
+		// 普通玩家不进入此分支（Qualified=false → 状态 0，无欢乐时光）。
+		if !hh.Enabled || hh.RemainingSeconds <= 0 {
 			hhState = 4
-		case hh.Unlimited:
-			hhState = 1
-		default:
+		} else {
 			hhMinutes = wNow + (hh.RemainingSeconds+59)/60*24
 			if hhMinutes > math.MaxUint32 {
 				hhMinutes = math.MaxUint32
 			}
 			hhState = 3
-			if hh.ExpiresAt > 0 {
-				hhEnd = uint64(proto.UnixToFiletime(hh.ExpiresAt))
-			}
 		}
 	}
 	return wiregen.MakeObj("ghfbofgdflm", map[int]*proto.Value{

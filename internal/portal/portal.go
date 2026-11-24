@@ -43,6 +43,11 @@ func New(db *store.DB, resolve func(string) int64) *Server {
 	s.mux.HandleFunc("GET /portal/api/profile", s.profile)
 	s.mux.HandleFunc("GET /portal/api/membership", s.membership)
 	s.mux.HandleFunc("POST /portal/api/membership/purchase", s.purchase)
+	// 服务中心：改名/头像，单价 20 金币（本地补丁）。
+	s.mux.HandleFunc("GET /portal/api/customize", s.customizeStatus)
+	s.mux.HandleFunc("POST /portal/api/customize/name", s.customizeName)
+	s.mux.HandleFunc("POST /portal/api/customize/avatar", s.customizeAvatar)
+	s.mux.HandleFunc("GET /portal/avatars/", s.serveAvatar)
 	s.mux.HandleFunc("/portal/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, 404, "接口不存在") })
 	files, _ := fs.Sub(assets, "web")
 	s.mux.Handle("/portal/", http.StripPrefix("/portal/", http.FileServer(http.FS(files))))
@@ -149,7 +154,7 @@ func (s *Server) profile(w http.ResponseWriter, r *http.Request) {
 	if m.ExpiresAt > 0 {
 		until = m.ExpiresAt * 1000
 	}
-	write(w, map[string]any{"userId": uid, "username": p.Name, "nickname": p.Name, "level": p.Level, "stars": p.Stars, "region": p.Region, "premium": m.Active, "premiumUntil": until, "goldMinor": p.Gold, "silverMinor": p.Silver})
+	write(w, map[string]any{"userId": uid, "username": p.Name, "nickname": p.Name, "avatar": p.Avatar, "level": p.Level, "stars": p.Stars, "region": p.Region, "premium": m.Active, "premiumUntil": until, "goldMinor": p.Gold, "silverMinor": p.Silver})
 }
 
 func (s *Server) membership(w http.ResponseWriter, r *http.Request) {

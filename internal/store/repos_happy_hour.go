@@ -7,47 +7,56 @@ import (
 	"time"
 )
 
-// 欢乐时光改为跟随会员：永久会员不限时长，限时会员按会员到期时间倒计时，
-// 非会员没有资格。happy_hour / happy_hour_exp 列保留但不再作为真值来源；
-// happy_hour_state 只用于标记当前在线会话是否正在钓鱼，不再累计每日额度。
+// 欢乐时光：会员专享，每个自然日 1 小时（Asia/Shanghai 零点重置）。
+// 普通玩家没有资格（Qualified=false），不享受任何加成。
+// 会员资格：永久会员，或限时会员且未过期；到期立即失去资格。
+// 额度只在同一在线会话"正在钓鱼"时累计；离线、换会话、进程重启都不补扣。
 
-// 资格类型历史枚举（会员类型同为 0/1/2，保留常量便于对照）。
 const (
 	HappyHourNone      = int64(0)
 	HappyHourLimited   = int64(1)
 	HappyHourUnlimited = int64(2)
 )
 
-// HappyHourUnlimitedSeconds 永久会员没有到期时间，主页/档案给一个固定的大额度。
+// HappyHourMemberMillis 会员每日欢乐时光额度：1 小时。
+const HappyHourMemberMillis = int64(60 * 60 * 1000)
+
+// HappyHourUnlimitedSeconds 历史哨兵，仅供旧后台展示兼容，不再表示无限时长。
 const HappyHourUnlimitedSeconds = int64(9999 * 60)
 
 var happyHourZone = time.FixedZone("Asia/Shanghai", 8*60*60)
 
 type HappyHourEntitlement struct {
-	Qualified        bool  `json:"qualified"`
-	Unlimited        bool  `json:"unlimited"`
-	ExpiresAt        int64 `json:"expires_at"`
-	RemainingSeconds int64 `json:"remaining_seconds"`
+	Qualified        bool  `json:"qualified"`         // 是否会员（有资格）
+	Member           bool  `json:"member"`            // 同 Qualified，兼容补丁字段
+	Unlimited        bool  `json:"unlimited"`         // 兼容字段，恒 false
+	ExpiresAt        int64 `json:"expires_at"`        // 会员到期时间，仅供展示
+	QuotaMillis      int64 `json:"quota_millis"`      // 当日额度上限：会员 3600000，普通 0
+	RemainingSeconds int64 `json:"remaining_seconds"` // 兼容展示用（剩余秒）
 }
 
-// HappyHourEntitled 按会员类型和到期时间计算欢乐时光资格与剩余时长。
+// HappyHourEntitled 计算会员资格与当日额度。普通玩家额度为 0（无欢乐时光）。
 func HappyHourEntitled(kind, expiresAt, now int64) HappyHourEntitlement {
-	if kind == HappyHourUnlimited {
-		return HappyHourEntitlement{Qualified: true, Unlimited: true, RemainingSeconds: HappyHourUnlimitedSeconds}
+	member := kind == HappyHourUnlimited || (kind == HappyHourLimited && expiresAt > now)
+	if !member {
+		return HappyHourEntitlement{ExpiresAt: expiresAt}
 	}
-	if kind == HappyHourLimited && expiresAt > now {
-		return HappyHourEntitlement{Qualified: true, ExpiresAt: expiresAt, RemainingSeconds: expiresAt - now}
+	return HappyHourEntitlement{
+		Qualified: true, Member: true, ExpiresAt: expiresAt,
+		QuotaMillis: HappyHourMemberMillis, RemainingSeconds: HappyHourMemberMillis / 1000,
 	}
-	return HappyHourEntitlement{ExpiresAt: expiresAt}
 }
 
 type HappyHourStatus struct {
 	Enabled          bool    `json:"enabled"`
 	Qualified        bool    `json:"qualified"`
+	Member           bool    `json:"member"`
 	Unlimited        bool    `json:"unlimited"`
 	ExpiresAt        int64   `json:"expires_at"`
 	Started          bool    `json:"started"`
 	Active           bool    `json:"active"`
+	UsedMillis       int64   `json:"used_millis"`
+	QuotaMillis      int64   `json:"quota_millis"`
 	RemainingSeconds int64   `json:"remaining_seconds"`
 	XPBonus          float64 `json:"xp_bonus"`
 	BiteBonus        float64 `json:"bite_bonus"`
@@ -56,9 +65,20 @@ type HappyHourStatus struct {
 
 func happyHourDay(now time.Time) string { return now.In(happyHourZone).Format("2006-01-02") }
 
-func happyHourStatus(enabled bool, ent HappyHourEntitlement, started, active bool) HappyHourStatus {
-	r := HappyHourStatus{Enabled: enabled, Qualified: ent.Qualified, Unlimited: ent.Unlimited, ExpiresAt: ent.ExpiresAt,
-		Started: started, Active: enabled && ent.Qualified && active, RemainingSeconds: ent.RemainingSeconds}
+func happyHourStatus(enabled bool, ent HappyHourEntitlement, started, active bool, used int64) HappyHourStatus {
+	remaining := int64(0)
+	if ent.Qualified {
+		remaining = (ent.QuotaMillis - used) / 1000
+		if remaining < 0 {
+			remaining = 0
+		}
+	}
+	r := HappyHourStatus{
+		Enabled: enabled, Qualified: ent.Qualified, Member: ent.Member,
+		Unlimited: false, ExpiresAt: ent.ExpiresAt, Started: started,
+		Active: enabled && ent.Qualified && active,
+		UsedMillis: used, QuotaMillis: ent.QuotaMillis, RemainingSeconds: remaining,
+	}
 	if r.Active {
 		r.XPBonus, r.BiteBonus, r.ProficiencyBonus = .5, .1, .25
 	}
@@ -91,15 +111,14 @@ func (d *DB) happyHourEntitlement(ctx context.Context, uid, now int64) (HappyHou
 	return HappyHourEntitled(kind, expires, now), nil
 }
 
-// AdvanceHappyHour 只刷新当前在线会话是否有效：会员资格由会员到期时间决定，
-// 不再按天累计/扣除时长，因此在线钓鱼即生效，离线不会消耗任何额度。
+// AdvanceHappyHour 会员每日额度：按 Asia/Shanghai 自然日重置，只在同一在线会话钓鱼时累计。
 func (d *DB) AdvanceHappyHour(ctx context.Context, uid int64, owner string, now time.Time, fishing, takeover bool, maxGap time.Duration) (HappyHourStatus, error) {
 	tx, err := d.SQL.BeginTx(ctx, nil)
 	if err != nil {
 		return HappyHourStatus{}, err
 	}
 	defer tx.Rollback()
-	// 先取得写锁，多个连接不能同时改写同一账户的在线状态。
+	// 写锁：多个连接不能同时消费同一账户的时长。
 	if _, err := tx.ExecContext(ctx, `UPDATE happy_hour_state SET active=active WHERE uid=?`, uid); err != nil {
 		return HappyHourStatus{}, err
 	}
@@ -114,35 +133,52 @@ func (d *DB) AdvanceHappyHour(ctx context.Context, uid int64, owner string, now 
 	if err != nil {
 		return HappyHourStatus{}, err
 	}
-	effective := enabled && ent.Qualified
-	var previousOwner string
-	var last int64
+	var day, previousOwner string
+	var used, last int64
 	var previousActive bool
-	err = tx.QueryRowContext(ctx, `SELECT last_tick,session_key,active FROM happy_hour_state WHERE uid=?`, uid).
-		Scan(&last, &previousOwner, &previousActive)
+	err = tx.QueryRowContext(ctx, `SELECT local_day,used_millis,last_tick,session_key,active FROM happy_hour_state WHERE uid=?`, uid).
+		Scan(&day, &used, &last, &previousOwner, &previousActive)
 	exists := err == nil
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return HappyHourStatus{}, err
 	}
-	millis := now.UnixMilli()
-	// 另一个在线会话仍在活跃时，新会话不能顶掉它，避免两个客户端同时吃加成。
+	millis, currentDay := now.UnixMilli(), happyHourDay(now)
+	// 另一在线会话仍活跃时，新会话不能顶掉它。
 	if exists && previousOwner != owner && (!takeover || previousActive && millis-last < max(30000, maxGap.Milliseconds())) {
-		return happyHourStatus(enabled, ent, true, false), nil
+		return happyHourStatus(enabled, ent, true, false, used), nil
 	}
-	active := fishing && effective
+	if !exists || day != currentDay {
+		used = 0
+		if exists && previousOwner == owner && previousActive {
+			local := now.In(happyHourZone)
+			midnight := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, happyHourZone).UnixMilli()
+			last = max(last, midnight)
+		} else {
+			last = millis
+		}
+	}
+	if exists && previousOwner == owner && previousActive {
+		elapsed := max(int64(0), millis-last)
+		if maxGap > 0 {
+			elapsed = min(elapsed, maxGap.Milliseconds())
+		}
+		used = min(ent.QuotaMillis, used+elapsed)
+	}
+	// 只有会员（QuotaMillis>0）且额度未用尽才激活。
+	active := fishing && enabled && ent.Qualified && used < ent.QuotaMillis
 	if !exists && !active {
-		return happyHourStatus(enabled, ent, false, false), nil
+		return happyHourStatus(enabled, ent, false, false, 0), nil
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO happy_hour_state(uid,local_day,used_millis,last_tick,session_key,active)
-		VALUES(?,?,0,?,?,?) ON CONFLICT(uid) DO UPDATE SET local_day=excluded.local_day,
-		used_millis=0,last_tick=excluded.last_tick,session_key=excluded.session_key,active=excluded.active`,
-		uid, happyHourDay(now), millis, owner, active); err != nil {
+		VALUES(?,?,?,?,?,?) ON CONFLICT(uid) DO UPDATE SET local_day=excluded.local_day,
+		used_millis=excluded.used_millis,last_tick=excluded.last_tick,session_key=excluded.session_key,active=excluded.active`,
+		uid, currentDay, used, millis, owner, active); err != nil {
 		return HappyHourStatus{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return HappyHourStatus{}, err
 	}
-	return happyHourStatus(enabled, ent, true, active), nil
+	return happyHourStatus(enabled, ent, true, active, used), nil
 }
 
 func (d *DB) GetHappyHourStatus(ctx context.Context, uid int64, now time.Time) (HappyHourStatus, error) {
@@ -156,14 +192,16 @@ func (d *DB) GetHappyHourStatus(ctx context.Context, uid int64, now time.Time) (
 	if err != nil {
 		return HappyHourStatus{}, err
 	}
-	var last int64
+	var day string
+	var used, last int64
 	var active bool
-	err = d.SQL.QueryRowContext(ctx, `SELECT active,last_tick FROM happy_hour_state WHERE uid=?`, uid).Scan(&active, &last)
-	if errors.Is(err, sql.ErrNoRows) {
-		return happyHourStatus(enabled, ent, false, false), nil
+	err = d.SQL.QueryRowContext(ctx, `SELECT local_day,used_millis,active,last_tick FROM happy_hour_state WHERE uid=?`, uid).
+		Scan(&day, &used, &active, &last)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && day != happyHourDay(now)) {
+		return happyHourStatus(enabled, ent, false, false, 0), nil
 	}
 	if err != nil {
 		return HappyHourStatus{}, err
 	}
-	return happyHourStatus(enabled, ent, true, active && now.UnixMilli()-last <= 30000), nil
+	return happyHourStatus(enabled, ent, true, active && now.UnixMilli()-last <= 30000, used), nil
 }

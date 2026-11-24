@@ -228,7 +228,7 @@ func (s *Server) rollLootBox(ctx context.Context, sess *Session, catch *RolledFi
 	// 上星只走这一支：命中开一包，未命中不再叠加通用概率，这样把概率调 0
 	// 就能彻底关掉上星开箱、调 1 则必开，概率值精确可控。
 	if grade == 3 {
-		if chance := s.lootBoxTrophyChance(); chance > 0 && rand.Float64() < chance {
+		if chance := s.lootBoxTrophyChanceForSession(sess); chance > 0 && rand.Float64() < chance {
 			if itemID := s.grantLootBox(ctx, sess, defs[0], catch, "奖杯概率"); itemID != "" {
 				return itemID
 			}
@@ -278,6 +278,25 @@ func (s *Server) lootBoxTrophyChance() float64 {
 		return 1
 	}
 	return p
+}
+
+// lootBoxTrophyChanceForSession 上星鱼开箱概率：欢乐时光进行中提升到 80%，
+// 结束后立即回落到后台配置值（每次掷骰实时读取欢乐时光状态，无缓存）。
+func (s *Server) lootBoxTrophyChanceForSession(sess *Session) float64 {
+	if sess != nil {
+		sess.happyMu.Lock()
+		active := sess.happyStatus.Active
+		sess.happyMu.Unlock()
+		if active {
+			if v := s.tunableF("loot_box_happy_trophy_chance", 0.8); v >= 0 {
+				if v > 1 {
+					return 1
+				}
+				return v
+			}
+		}
+	}
+	return s.lootBoxTrophyChance()
 }
 
 // catchGrade 安全取鱼档位（1 未达标 / 2 合格 / 3 奖杯 / 4 蓝冠）。

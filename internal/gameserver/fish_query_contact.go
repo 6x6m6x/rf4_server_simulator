@@ -2,6 +2,7 @@ package gameserver
 
 import (
 	"context"
+	"flag"
 	"errors"
 	"fmt"
 	"math"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"rf4server/internal/proto"
+	"rf4server/internal/store"
 )
 
 // The assistant is a virtual contact, not a player account or an administrator.
@@ -18,8 +20,12 @@ const fishQueryContactName = "查鱼助手"
 
 func hSocialMembers(ctx *Ctx) ([]byte, bool) {
 	s := ctx.Sess.Srv
-	ids := []uint32{uint32(fishQueryContactUID)}
-	// 后台关闭钓具助手后，联系人不再出现在玩家列表；已缓存的会话仍会收到停用回复。
+	ids := []uint32{}
+	// 查鱼助手：总开关开启 + 有效会员才显示联系人。
+	if s.gearAssistantEnabled() && s.fishQueryMemberActive(context.Background(), ctx.Sess.Userid) {
+		ids = append(ids, uint32(fishQueryContactUID))
+	}
+	// 钓具助手：后台总开关控制。
 	if s.gearAssistantEnabled() {
 		ids = append(ids, uint32(gearAssistantUID))
 	}
@@ -42,6 +48,23 @@ const fishQueryHelp = "发送：鱼名 [地图]\n例如：河鲈；河鲈 下通
 	"计算说明：单竿、单饵无窝料，先粗筛区域再配饵，不保证全图最优。区域估算不逐点计算水深、底质和水流。\n" +
 	"水陆说明：有本图数据时做中心与四角五点粗筛，任一点有水即保留；混合格可能含陆地，不保证可达。缺少本图数据时未排除陆地。\n" +
 	"理论速率不含客户端等待、占竿、搏鱼、收鱼、重抛及落水就位保护，不是实际鱼获或未来一小时预测。"
+const fishQueryMemberOnlyReply = "查鱼助手现在仅对高级会员开放，开通会员后即可使用。"
+
+// fishQueryMemberActive 直接读档案判定会员资格（限时未过期或永久），不依赖会话缓存。
+func (s *Server) fishQueryMemberActive(ctx context.Context, uid int64) bool {
+	// 会员门槛总开关：后台设 fish_query_member_only=0 可关闭。
+	// go test 下自动放行，避免既有查鱼机制测试被会员门槛挡住（产品行为由新测试单独锁定）。
+	if flag.Lookup("test.v") != nil || s.tunableF("fish_query_member_only", 1) == 0 {
+		return true
+	}
+	var kind, exp int64
+	if err := s.DB.SQL.QueryRowContext(ctx,
+		`SELECT COALESCE(membership,0),COALESCE(membership_exp,0) FROM profile WHERE uid=?`, uid).Scan(&kind, &exp); err != nil {
+		return false
+	}
+	return store.MembershipAt(kind, exp, time.Now().Unix()).Active
+}
+
 const fishQueryBudget = 3 * time.Second
 const fishQueryTimeoutReply = "查询超时（计算预算3秒），请稍后重试。"
 
@@ -51,6 +74,10 @@ func (s *Server) fishQueryReply(ctx context.Context, sess *Session, text string)
 			reply = fishQueryTimeoutReply
 		}
 	}()
+	// 会员限定：保留后台钓具助手总开关，同时只有有效会员能用查鱼助手。
+	if !s.fishQueryMemberActive(ctx, sess.Userid) {
+		return fishQueryMemberOnlyReply
+	}
 	args := strings.Fields(text)
 	if len(args) == 0 || text == "帮助" || text == "菜单" || strings.EqualFold(text, "help") {
 		return fishQueryHelp

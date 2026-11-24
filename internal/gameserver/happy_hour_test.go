@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"rf4server/internal/proto"
 	"rf4server/internal/store"
 )
 
@@ -158,8 +157,9 @@ func TestHappyHourValidFishingPendingAndCloseFence(t *testing.T) {
 	if r := sess.updateHappyHour(now, false); !r.Active {
 		t.Fatal("pending fight after bait consumption lost qualification")
 	}
-	if r := sess.updateHappyHour(now.Add(10*time.Second), false); r.RemainingSeconds != store.HappyHourUnlimitedSeconds {
-		t.Fatalf("permanent member remaining changed: %+v", r)
+	// 会员每日 1 小时额度：10 秒后剩余 3590 秒（每日额度制，不再无限）。
+	if r := sess.updateHappyHour(now.Add(10*time.Second), false); r.RemainingSeconds != 3590 {
+		t.Fatalf("member quota remaining changed: %+v", r)
 	}
 	var wg sync.WaitGroup
 	for range 12 {
@@ -239,8 +239,9 @@ func TestProfile307HappyHourState(t *testing.T) {
 		t.Fatalf("非会员 f24=%d/%d/%d", state, minutes, end)
 	}
 
+	// 会员每日 1 小时：状态 3 + 60 游戏分钟倒计时（非会员才是状态 0）。
 	setMembership(store.HappyHourUnlimited, 0)
-	if state, minutes, end := build(0); state != 1 || minutes != 0 || end != pass745F2 {
+	if state, minutes, end := build(0); state != 3 || minutes != 60*24 || end != pass745F2 {
 		t.Fatalf("永久会员 f24=%d/%d/%d", state, minutes, end)
 	}
 
@@ -251,8 +252,9 @@ func TestProfile307HappyHourState(t *testing.T) {
 	if state != 3 || minutes != wNow+60*24 {
 		t.Fatalf("限时会员 f24=%d/%d/%d", state, minutes, end)
 	}
-	if end != uint64(proto.UnixToFiletime(exp)) {
-		t.Fatalf("限时会员 f2=%d 期望 %d", end, proto.UnixToFiletime(exp))
+	// 每日额度制不再在 f2 下发会员到期时间（保持固定 pass745F2）。
+	if end != pass745F2 {
+		t.Fatalf("限时会员 f2=%d 期望 %d", end, pass745F2)
 	}
 
 	if err := db.TunableSet(ctx, "happy_hour_enabled", "0", "test"); err != nil {

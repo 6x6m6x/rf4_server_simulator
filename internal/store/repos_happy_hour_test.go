@@ -39,7 +39,7 @@ func TestHappyHourFollowsPermanentMembership(t *testing.T) {
 		}
 		return r
 	}
-	if r := advance("a", now, false, true); r.Started || r.Active || !r.Qualified || !r.Unlimited || r.RemainingSeconds != HappyHourUnlimitedSeconds {
+	if r := advance("a", now, false, true); r.Started || r.Active || !r.Qualified || r.Unlimited || r.RemainingSeconds != 3600 {
 		t.Fatalf("idle %+v", r)
 	}
 	if r := advance("a", now, true, true); !r.Active || r.XPBonus != .5 || r.BiteBonus != .1 || r.ProficiencyBonus != .25 {
@@ -63,11 +63,11 @@ func TestHappyHourFollowsPermanentMembership(t *testing.T) {
 	if err := db.Migrate(); err != nil {
 		t.Fatal(err)
 	}
-	if r := advance("c", now.Add(2*time.Hour), true, true); !r.Active || r.RemainingSeconds != HappyHourUnlimitedSeconds {
+	if r := advance("c", now.Add(2*time.Hour), true, true); !r.Active || r.RemainingSeconds != 3580 {
 		t.Fatalf("restart consumed time %+v", r)
 	}
 	// 连续在线一整天也不会用完（会员无每日时长限制）。
-	if r := advance("c", now.Add(24*time.Hour), true, true); !r.Active || !r.Unlimited {
+	if r := advance("c", now.Add(24*time.Hour), true, true); r.Active || r.RemainingSeconds != 0 {
 		t.Fatalf("daily cap still enforced %+v", r)
 	}
 }
@@ -94,7 +94,7 @@ func TestHappyHourConcurrentSessionCannotStealActiveSession(t *testing.T) {
 		t.Fatalf("second session stole active time %+v %v", other, err)
 	}
 	first, err := db.AdvanceHappyHour(ctx, 10, "first", now.Add(10*time.Second), true, true, 30*time.Second)
-	if err != nil || !first.Active || first.RemainingSeconds != expires-now.Unix()-10 {
+	if err != nil || !first.Active || first.RemainingSeconds != 3590 {
 		t.Fatalf("clock stopped following membership %+v %v", first, err)
 	}
 }
@@ -122,7 +122,7 @@ func TestHappyHourSwitchPausesBonusWithoutTouchingMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, err = db.AdvanceHappyHour(ctx, 1, "a", now.Add(30*time.Second), true, true, 0)
-	if err != nil || r.Active || r.Enabled || !r.Qualified || r.RemainingSeconds != HappyHourUnlimitedSeconds {
+	if err != nil || r.Active || r.Enabled || !r.Qualified || r.RemainingSeconds != 3580 {
 		t.Fatalf("disabled %+v %v", r, err)
 	}
 	if err := db.TunableSet(ctx, "happy_hour_enabled", "1", "test"); err != nil {
@@ -153,7 +153,8 @@ func TestHappyHourRequiresValidMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, err := db.AdvanceHappyHour(ctx, 55, "a", now, true, true, 0)
-	if err != nil || !r.Qualified || r.Unlimited || !r.Active || r.RemainingSeconds != expires-now.Unix() {
+	// 限时会员：固定每日 1 小时额度（不再跟随会员到期时间）。
+	if err != nil || !r.Qualified || r.Unlimited || !r.Active || r.RemainingSeconds != 3600 {
 		t.Fatalf("限时会员未生效 %+v %v", r, err)
 	}
 	if r, err := db.AdvanceHappyHour(ctx, 55, "a", now.AddDate(0, 0, 31), true, true, 0); err != nil || r.Qualified || r.Active {
@@ -163,7 +164,8 @@ func TestHappyHourRequiresValidMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, err = db.GetHappyHourStatus(ctx, 55, now)
-	if err != nil || !r.Qualified || !r.Unlimited || r.RemainingSeconds != HappyHourUnlimitedSeconds {
+	// 永久会员：每日 1 小时额度，不再无限。
+	if err != nil || !r.Qualified || r.Unlimited || r.RemainingSeconds != 3600 {
 		t.Fatalf("永久会员未同步欢乐时光 %+v %v", r, err)
 	}
 }

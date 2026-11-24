@@ -15,3 +15,39 @@
 .av_mask::after{content:"◉";font:64px/1 system-ui,sans-serif}
 #head_banner{background:linear-gradient(120deg,#594835,#9b874f)!important}
 .flag.cn.region{padding-left:0}
+
+/* ===== 管理端风格改造（本地补丁） ===== */
+:root{--adm-bg:#0b0f14;--adm-surface:#121821;--adm-surface-2:#19212c;--adm-line:#222c38;--adm-text:#e6edf3;--adm-muted:#8b98a8;--adm-accent:#4cb3d4;--adm-accent-hover:#66c2df;--adm-bad:#e5484d}
+body.portal-page{background:var(--adm-bg);color:var(--adm-text);font-family:system-ui,"Microsoft YaHei",sans-serif}
+#root.middle{max-width:1080px;margin:24px auto;padding:0 18px;box-sizing:border-box}
+#header,#main,#tabular_body,.table_content{background:var(--adm-surface)!important;border:1px solid var(--adm-line);border-radius:10px}
+#header{margin-bottom:14px}
+#head_bar,#head_content{background:transparent!important;border:0!important}
+#main_menu a,#login_button{color:var(--adm-text)!important}
+#main_menu a[aria-current="page"]{color:var(--adm-accent)!important;border-bottom-color:var(--adm-accent)!important}
+#main>h1{color:var(--adm-text);font-size:22px;font-weight:650;padding:16px 20px 0;margin:0}
+#main .user_info{border:0!important;box-shadow:none!important;border-radius:0!important;padding:18px 20px!important;grid-template-columns:150px minmax(0,1fr)}
+#main #account_name{color:var(--adm-text);font-size:22px;font-weight:650}
+#main .user_info .info table td.left{color:var(--adm-muted)}
+#main .user_info .info table td.right b{color:var(--adm-text)}
+#main .local-panel{border-top:1px solid var(--adm-line)!important;padding:18px 20px!important;margin:0!important;background:var(--adm-surface-2);border-radius:8px}
+#main .local-panel h2{color:var(--adm-text);font-size:18px;font-weight:650}
+#main .local-panel p,#main .local-status{color:var(--adm-muted)}
+#main .local-plan{background:var(--adm-surface);border:1px solid var(--adm-line);border-radius:8px}
+#main .local-plan h3{color:var(--adm-accent)}
+#main .local-panel button,.local-actions button{background:var(--adm-accent)!important;color:#06131a!important;border:1px solid var(--adm-accent)!important;border-radius:6px!important;font-weight:650!important}
+#main .local-panel button:hover:not(:disabled){background:var(--adm-accent-hover)!important}
+#main .local-panel button:disabled{background:var(--adm-surface-2)!important;color:var(--adm-muted)!important;border-color:var(--adm-line)!important}
+#local-auth{border:1px solid var(--adm-line)!important;border-radius:10px!important;background:var(--adm-surface)!important;color:var(--adm-text)}
+#local-auth h2{color:var(--adm-text)}#local-auth label,#local-auth p{color:var(--adm-muted)}
+#local-auth input{background:var(--adm-surface-2);color:var(--adm-text);border:1px solid var(--adm-line);border-radius:6px}
+/* LOGO：羊村服 */
+.small_logo::after{content:"俄罗斯钓鱼4羊村服";font-size:13px;letter-spacing:.5px;white-space:nowrap}
+#local-member-message,#local-message,#local-auth-message{color:var(--adm-accent)}
+/* 改名/头像区 */
+#main .local-panel.customize{background:var(--adm-surface-2);border:1px solid var(--adm-line);margin-top:16px!important}
+.customize-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
+.customize-row input[type=text]{background:var(--adm-surface);color:var(--adm-text);border:1px solid var(--adm-line);border-radius:6px;padding:8px 10px;min-width:220px;font:inherit}
+.customize-row input[type=file]{color:var(--adm-muted);font-size:13px}
+.customize-hint{font-size:13px;color:var(--adm-muted);margin:6px 0}
+.customize-avatar{width:64px;height:64px;border-radius:8px;object-fit:cover;background:var(--adm-surface);border:1px solid var(--adm-line)}
