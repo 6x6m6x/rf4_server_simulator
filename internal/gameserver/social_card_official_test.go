@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"rf4server/internal/proto"
+	"rf4server/internal/store"
 	"rf4server/internal/wiregen"
 )
 
@@ -67,5 +68,29 @@ func TestSocialUserProfileTabFields(t *testing.T) {
 		if got := card.Fields[i].Val.Code; got == nil || *got != code {
 			t.Fatalf("24/18.f%d code=%v 期望 %s", i, got, code)
 		}
+	}
+}
+
+// 资格页：每种资格只发最高等级一个ID，未获得的不发（官服行为）。
+func TestSocialQualificationHighestOnly(t *testing.T) {
+	env := newDLineTestEnv(t, 100)
+	registerSocialHandlers(env.srv.dispatch)
+	ctx := context.Background()
+	if _, err := env.db.EnsureProfile(ctx, 200); err != nil { t.Fatal(err) }
+	// branch1 stage1(t1) + stage2(t1/t2) + stage3(t1) 均完成；branch2 stage1 完成；branch3 无。
+	now := float64(1700000000)
+	for _, id := range []int64{1001, 1101, 1102, 1201, 2001} {
+		if err := env.db.UpsertQualificationState(ctx, 200, store.QualificationState{
+			RuleID: id, Counted: []store.QualificationFish{}, CompletedTS: now,
+		}); err != nil { t.Fatal(err) }
+	}
+	card := decodeWrappedBytes(t, env.invoke(t, 24, 18, proto.Args524(proto.U32(200))))
+	f4 := card.Fields[4].Val
+	if f4 == nil || f4.Kind != proto.KindTypedU32Arr { t.Fatalf("f4 非 typed_u32arr: %+v", f4) }
+	got := map[uint32]bool{}
+	for _, it := range f4.Items { got[uint32(it.Num)] = true }
+	// branch1 最高 stage3 → 103；branch2 最高 stage1 → 201；branch3 无 → 不发
+	if len(got) != 2 || !got[103] || !got[201] {
+		t.Fatalf("资格ID应只含 103/201，实际 %v", got)
 	}
 }
