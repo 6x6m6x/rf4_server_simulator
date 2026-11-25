@@ -1,6 +1,7 @@
 package gameserver
 
 import (
+	"time"
 	"database/sql"
 	"encoding/json"
 
@@ -57,10 +58,25 @@ func hSocialUserProfile(ctx *Ctx) ([]byte, bool) {
 			return nil, true
 		}
 	}
-	inner := wiregen.MustMakeObj("feaidppnpch", map[int]*proto.Value{
+	// 用户补丁（官服抓包 2026-11-25 校准）：24/18 顶层 10 字段，此前只填 f0/f9，
+	// 客户端打开他人资料卡页会因 f1/f2 缺失而报错空白。
+	// f1=obj322 统计快照、f2=obj321 鱼类记录（复用 3/2 的现成构造），
+	// f3=空 args(186)、f8=空串；f4~f7/f9 保留既有/空形状。
+	fields := map[int]*proto.Value{
 		0: proto.U32(uint32(uid)),
 		9: decks,
-	})
+	}
+	if s := ctx.Sess.Srv; s != nil && s.DB != nil {
+		if stats322 := buildStats322W(worldTotalGameMin(time.Now())); stats322 != nil {
+			fields[1] = stats322
+		}
+		if stats321, err := s.buildStats321(ctx.Sess.pushCtx(), uid); err == nil && stats321 != nil {
+			fields[2] = stats321
+		}
+	}
+	fields[3] = proto.Args(proto.S("186"))
+	fields[8] = proto.StrVal("")
+	inner := wiregen.MustMakeObj("feaidppnpch", fields)
 	outer, err := bytesWrappedObject(inner, ctx.Sess.Table())
 	if err != nil {
 		ctx.Log.Error("24/18 档案编码失败", "uid", uid, "err", err)

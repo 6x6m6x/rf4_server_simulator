@@ -30,15 +30,31 @@ func hSocialMembers(ctx *Ctx) ([]byte, bool) {
 		ids = append(ids, uint32(gearAssistantUID))
 	}
 	seen := map[int64]bool{fishQueryContactUID: true, gearAssistantUID: true}
-	players := make([]uint32, 0, len(s.sessions))
-	s.mu.Lock()
-	for _, peer := range s.sessions {
-		if peer != nil && !peer.Closed() && peer.Userid > 0 && !seen[peer.Userid] {
-			players = append(players, uint32(peer.Userid))
-			seen[peer.Userid] = true
+	// 用户补丁（官服抓包 24/4 校准）：联系人列表下发全部角色，不只当前在线会话。
+	// 否则玩家下线即从列表消失，且从未同屏的角色永远互相看不到，资料卡无法互相打开。
+	players := make([]uint32, 0)
+	if s.DB != nil {
+		uids, err := s.DB.AllProfileUIDs(s.dbCtx())
+		if err == nil {
+			for _, uid := range uids {
+				if uid > 0 && !seen[uid] {
+					players = append(players, uint32(uid))
+					seen[uid] = true
+				}
+			}
 		}
 	}
-	s.mu.Unlock()
+	// DB 不可用或无角色（离线模式/测试）时回退到既有在线会话列表，保证不空。
+	if len(players) == 0 {
+		s.mu.Lock()
+		for _, peer := range s.sessions {
+			if peer != nil && !peer.Closed() && peer.Userid > 0 && !seen[peer.Userid] {
+				players = append(players, uint32(peer.Userid))
+				seen[peer.Userid] = true
+			}
+		}
+		s.mu.Unlock()
+	}
 	sort.Slice(players, func(i, j int) bool { return players[i] < players[j] })
 	ids = append(ids, players...)
 	return encodeSocialTree(ctx, proto.U32Arr(ids))

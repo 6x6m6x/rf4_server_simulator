@@ -157,9 +157,16 @@ func TestFishQueryContactAndMailReplay(t *testing.T) {
 	first.sess.Token = "fish-query-test"
 	env := &dlineTestEnv{srv: s, db: db, sess: first.sess}
 	members := env.invoke(t, 24, 4, proto.Args524(proto.U32(0), proto.StrVal("")))
-	if members.Kind != proto.KindU32Arr || len(members.Items) != 4 || members.Items[0].Num != uint64(fishQueryContactUID) || members.Items[1].Num != uint64(gearAssistantUID) {
+	// 用户补丁：联系人含全部角色（不只在线），断言前两项仍是虚拟助手、
+	// 且必须包含已建档玩家 uid（离线也可见）。
+	if members.Kind != proto.KindU32Arr || len(members.Items) < 3 || members.Items[0].Num != uint64(fishQueryContactUID) || members.Items[1].Num != uint64(gearAssistantUID) {
 		t.Fatalf("contact missing from members: %+v", members)
 	}
+	foundUID := false
+	for _, it := range members.Items {
+		if it.Num == uint64(uid) { foundUID = true }
+	}
+	if !foundUID { t.Fatalf("联系人列表缺少已建档玩家 %d: %+v", uid, members) }
 	card := decodeWrappedBytes(t, env.invoke(t, 24, 19, proto.Args524(proto.U32(uint32(fishQueryContactUID)))))
 	if card.TypeID != 2002 || card.Fields[1].StrOr() != fishQueryContactName || card.Fields[3].U32() != 0 {
 		t.Fatalf("invalid contact card: %+v", card)
