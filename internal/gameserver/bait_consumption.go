@@ -538,6 +538,11 @@ func baitUseRule(def *store.ItemDef, cast bool) (bool, float64) {
 			return false, 0.02
 		}
 	}
+	// 用户补丁：cat58 小药（dip/引诱成分，挂在水底钓组上）每次上鱼咬钩扣 1 份。
+	// 抛竿不扣（cast=true 分支已提前返回），仅中钩确认时消耗。
+	if def.Category == 58 {
+		return true, 0
+	}
 	return false, 0
 }
 
