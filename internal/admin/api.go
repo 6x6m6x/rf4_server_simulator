@@ -469,7 +469,7 @@ func (s *Server) handleTunableSet(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 400, "参数错误")
 		return
 	}
-	if (req.Key == "bite_pace_enabled" || req.Key == "condition_fishing_pause_enabled" || req.Key == "condition_health_enabled" || req.Key == "event_anniversary_enabled" || req.Key == "event_newyear_enabled" || req.Key == "fish_bait_rules_enabled" || req.Key == "fish_catch_channel" || req.Key == "fish_distribution_enabled" || req.Key == "fish_ecology_enabled" || req.Key == "fish_escape_channel" || req.Key == "fish_hunt_enabled" || req.Key == "fish_weather_enabled" || req.Key == "gear_assistant_enabled" || req.Key == "grade_ratio_enabled" || req.Key == "happy_hour_enabled" || req.Key == "hook_nibble_enabled" || req.Key == "loot_box_trophy_guarantee" || req.Key == "two_stage_hunt_enabled") && req.Value != "0" && req.Value != "1" {
+	if (req.Key == "bite_pace_enabled" || req.Key == "condition_fishing_pause_enabled" || req.Key == "condition_health_enabled" || req.Key == "event_anniversary_enabled" || req.Key == "event_newyear_enabled" || req.Key == "fish_bait_rules_enabled" || req.Key == "fish_catch_channel" || req.Key == "fish_distribution_enabled" || req.Key == "fish_ecology_enabled" || req.Key == "fish_escape_channel" || req.Key == "fish_hunt_enabled" || req.Key == "fish_weather_enabled" || req.Key == "gear_assistant_enabled" || req.Key == "grade_ratio_enabled" || req.Key == "happy_hour_enabled" || req.Key == "hook_nibble_enabled" || req.Key == "loot_box_trophy_guarantee" || req.Key == "marine_layer_enabled" || req.Key == "two_stage_hunt_enabled") && req.Value != "0" && req.Value != "1" {
 		httpError(w, 400, "开关只能为 0 或 1")
 		return
 	}
@@ -484,6 +484,13 @@ func (s *Server) handleTunableSet(w http.ResponseWriter, r *http.Request) {
 		v, err := strconv.ParseFloat(req.Value, 64)
 		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
 			httpError(w, 400, "鱼获档位权重必须是非负数字")
+			return
+		}
+	}
+	if strings.HasPrefix(req.Key, "skill_grade_mult_") {
+		v, err := strconv.ParseFloat(strings.TrimSpace(req.Value), 64)
+		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 20 {
+			httpError(w, 400, "鱼获档位熟练度倍数必须在 0 ~ 20 之间")
 			return
 		}
 	}
@@ -568,7 +575,7 @@ func spawnModeFor(t map[string]string) string {
 }
 
 // handleBiteModeGet/Set 鱼汛模式二选一（legacy/realistic），
-// 原子统管硬性门/生态/天气/吃饵/分布五个开关；mixed 表示手动改过单个开关。
+// 原子统管硬性门/生态/天气/吃饵/分布/海钓水层六个开关；mixed 表示手动改过单个开关。
 func (s *Server) handleBiteModeGet(w http.ResponseWriter, r *http.Request) {
 	t, err := s.db.TunableList(r.Context())
 	if err != nil {
@@ -659,17 +666,18 @@ func (s *Server) handleSkillGainModeSet(w http.ResponseWriter, r *http.Request) 
 // ---- 玩家管理 ----
 
 type playerRow struct {
-	UID     int64   `json:"uid"`
-	Name    string  `json:"name"`
-	Level   int64   `json:"level"`
-	XP      int64   `json:"xp"`
-	Silver  int64   `json:"silver"`
-	Gold    int64   `json:"gold"`
-	Bank    int64   `json:"bank"`
+	UID         int64   `json:"uid"`
+	Name        string  `json:"name"`
+	Level       int64   `json:"level"`
+	XP          int64   `json:"xp"`
+	Silver      int64   `json:"silver"`
+	Gold        int64   `json:"gold"`
+	Bank        int64   `json:"bank"`
 	Avatar  string  `json:"avatar"` // 头像 URL：玩家列表也下发，便于他人查看
-	Banned  bool    `json:"banned"`
-	Online  bool    `json:"online"`
-	Updated float64 `json:"updated_ts"`
+	Banned      bool    `json:"banned"`
+	Online      bool    `json:"online"`
+	OnlineKnown bool    `json:"online_known"`
+	Updated     float64 `json:"updated_ts"`
 }
 
 func (s *Server) handlePlayers(w http.ResponseWriter, r *http.Request) {
@@ -698,6 +706,7 @@ func (s *Server) handlePlayers(w http.ResponseWriter, r *http.Request) {
 	online := s.onlineUIDs(ctx)
 	for i := range rows {
 		rows[i].Online = online[rows[i].UID]
+		rows[i].OnlineKnown = online != nil
 	}
 	writeJSON(w, rows)
 }

@@ -754,6 +754,8 @@ func hSocialMove(ctx *Ctx) ([]byte, bool) {
 		"users":   ch.Users,
 		"private": false,
 	})
+	// 用户补丁：离开频道后回收空私人频道。
+	ctx.Sess.Srv.sweepEmptyPrivateChannels()
 	return []byte{0x00}, true
 }
 
@@ -780,16 +782,9 @@ func hSocialPublic(ctx *Ctx) ([]byte, bool) {
 	if users < 1 {
 		users = 1
 	}
-	// 公聊广播给所有在线会话；只回显发送者会导致多人频道互相看不到。
+	// 用户补丁：公聊只广播给同一频道的在线会话，主频道/私人频道互不串聊。
 	srv := ctx.Sess.Srv
-	srv.mu.Lock()
-	peers := make([]*Session, 0, len(srv.sessions))
-	for _, sess := range srv.sessions {
-		if sess != nil && !sess.Closed() {
-			peers = append(peers, sess)
-		}
-	}
-	srv.mu.Unlock()
+	peers := srv.channelPeers(sessChannel(ctx.Sess).Name)
 	if int64(len(peers)) > users {
 		users = int64(len(peers))
 	}

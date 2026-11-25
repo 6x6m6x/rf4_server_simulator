@@ -13,6 +13,9 @@ import (
 
 func registerSocialHandlers(d *Dispatch) {
 	d.Register(24, 4, hSocialMembers)
+	d.Register(24, 5, hSocialChatList)
+	d.Register(24, 6, hSocialCreateChannel)
+	d.Register(24, 7, hSocialJoinChannel)
 	d.RegisterResponseContract(24, 4, ResponseContractRule{Kind: proto.KindU32Arr})
 	d.Register(24, 18, hSocialUserProfile)
 	d.Register(24, 19, hSocialUserCard)

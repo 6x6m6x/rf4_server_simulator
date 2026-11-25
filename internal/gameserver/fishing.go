@@ -3260,7 +3260,9 @@ func (s *Server) onRodBiteTimerTicket(uid int64, st *FishState, ticket fishingTi
 		groundX, groundZ, hasGroundPos = st.PosX, st.PosZ, st.HasPos
 	}
 	probability := s.biteProbabilityForLoc(st.Loc)
-	// PR574：海钓水层影响开启时，整杆开口率按实时水层/钩位数分摊。
+	// 海钓水层影响开启时，海钓模式整杆开口率取实时海钓水层，并按钩位/饵数
+	// 分摊：刚入水约 0.05、贴底约 0.93，越接近目标水层鱼口越高；关闭开关
+	// 或非海钓返回原概率。
 	if s.marineLayerEnabled() && marineRigType(st.RigType) {
 		groups := s.baitedHookSets(s.dbCtx(), st.GearGuid)
 		probability = s.marineLayerBiteProbability(probability, st, s.marineBaitHookCount(s.dbCtx(), st.RigType, groups))
@@ -3606,10 +3608,6 @@ func (s *Server) fishLandedKV(f *RolledFish) *proto.Value {
 }
 
 // notifyFishLanded 播报达标、奖杯和蓝冠；普通鱼由结算卡展示。
-// 默认同时把同一条播报推给其他在线玩家（频道播报），可用 tunables 关闭：
-//
-//	fish_catch_channel       1=开启跨玩家频道播报（默认 1），0=只播给自己
-//	fish_catch_channel_grade 播报最低档位（默认 0=全部；2=达标及以上）
 func (s *Server) notifyFishLanded(sess *Session, f *RolledFish, newRecord bool) {
 	if sess == nil || f == nil {
 		return
@@ -3704,8 +3702,6 @@ var fishEscapeTaunts = []string{
 // notifyFishEscape 跑鱼提示：类型3（蓝色 KV 模板），文案带随机语气词，
 // 重量走键2（客户端模板句尾自动显示“X 克/公斤”）。
 // fish_escape_taunt=0 或没有在途鱼体时回退官方原因模板。
-// 默认同时推给其他在线玩家（频道播报），fish_escape_channel=0 可关闭；
-// fish_escape_channel_grade 只播档位不低于该值的跑鱼（默认 0=全部）。
 func (s *Server) notifyFishEscape(sess *Session, f *RolledFish, reason string) {
 	if s == nil || sess == nil {
 		return
@@ -3714,47 +3710,33 @@ func (s *Server) notifyFishEscape(sess *Session, f *RolledFish, reason string) {
 	if kind, ok := escapeTemplateKind[reason]; ok {
 		officialKind = kind
 	}
-	kind := officialKind
-	var kv *proto.Value
-	if f != nil && s.tunableF("fish_escape_taunt", 1) != 0 {
-		weight := int64(0)
+	if f == nil || s.tunableF("fish_escape_taunt", 1) == 0 {
+		sess.pushChatProbe(27, officialKind, "", nil)
+		return
+	}
+	weight := int64(0)
+	name := ""
+	tier := ""
+	if f != nil {
 		if f.WeightG > 0 {
 			weight = f.WeightG
 		}
-		name := s.speciesZhName(s.dbCtx(), f.Species)
+		name = s.speciesZhName(s.dbCtx(), f.Species)
 		if name == "" {
 			name = f.Species
 		}
-		tier := ""
 		if f.Grade >= 4 {
 			tier = "超级稀有 "
 		} else if f.Grade == 3 {
 			tier = "稀有 "
 		}
-		taunt := fishEscapeTaunts[rand.Intn(len(fishEscapeTaunts))]
-		// 客户端 KV 模板恒在文案末尾追加“X 克/公斤”（缺键2 显示“0 克”），
-		// 服务端无法把重量插到句子中间。想让重量紧跟鱼名，只能把鱼名放到句尾：
-		//   "这都能跑！你的 稀有 丁鱵" + 客户端追加 " 1.5 千克"
-		text := "你的 " + tier + name + "，跑掉了，" + taunt + "！"
-		kv = fishTVKv(text, weight)
-		kind = 3
 	}
-
-	broadcast := s.tunableF("fish_escape_channel", 1) != 0 &&
-		(f == nil || f.Grade >= int64(s.tunableF("fish_escape_channel_grade", 0)))
-	if !broadcast {
-		if kv != nil {
-			sess.pushChatProbe(27, kind, "", kv)
-			return
-		}
-		sess.pushChatProbe(27, officialKind, "", nil)
-		return
-	}
-	// 频道播报开着时本人不再单独收一条：每人只看到频道里这一行。
-	if s.log != nil {
-		s.log.Info("跑鱼频道播报", "from", sess.Userid, "reason", reason, "kind", kind)
-	}
-	s.broadcastChatProbeIncludingSelf(sess, uint64(sess.Userid), 27, kind, "", kv)
+	taunt := fishEscapeTaunts[rand.Intn(len(fishEscapeTaunts))]
+	// 客户端 KV 模板恒在文案末尾追加“X 克/公斤”（缺键2 显示“0 克”），
+	// 服务端无法把重量插到句子中间。想让重量紧跟鱼名，只能把鱼名放到句尾：
+	//   "这都能跑！你的 稀有 丁鱵" + 客户端追加 " 1.5 千克"
+	text := "你的 " + tier + name + "，跑掉了，" + taunt + "！"
+	sess.pushChatProbe(27, 3, "", fishTVKv(text, weight))
 }
 
 // bumpFishingCounter 增加玩家钓鱼计数器（escapes 等），幂等累加。
