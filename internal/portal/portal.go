@@ -30,14 +30,15 @@ type session struct {
 type Server struct {
 	db       *store.DB
 	resolve  func(string) int64
+	baseURL  string // 头像等资源对外 URL 前缀（gateway advertise host:port）
 	mu       sync.Mutex
 	sessions map[string]session
 	mux      *http.ServeMux
 }
 
 // New uses the same source-address identity as game login; callers cannot choose a UID.
-func New(db *store.DB, resolve func(string) int64) *Server {
-	s := &Server{db: db, resolve: resolve, sessions: map[string]session{}, mux: http.NewServeMux()}
+func New(db *store.DB, resolve func(string) int64, baseURL string) *Server {
+	s := &Server{db: db, resolve: resolve, baseURL: strings.TrimRight(baseURL, "/"), sessions: map[string]session{}, mux: http.NewServeMux()}
 	s.mux.HandleFunc("POST /portal/api/session", s.login)
 	s.mux.HandleFunc("DELETE /portal/api/session", s.logout)
 	s.mux.HandleFunc("GET /portal/api/profile", s.profile)

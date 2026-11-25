@@ -115,11 +115,16 @@ func (s *Server) customizeAvatar(w http.ResponseWriter, r *http.Request) {
 	// 客户端资料卡拿到的 avatar 必须是完整 URL（相对路径客户端无法解析）。
 	// 用本次请求的 Host 拼绝对地址，头像由 gateway 的 /portal/avatars/ 提供，
 	// 客户端与后台浏览器都能拉到。
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
+	base := s.baseURL
+	if base == "" {
+		// 无 advertise 配置时回退到请求 Host（仅同机访问可用）。
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		base = scheme + "://" + r.Host
 	}
-	avatar := scheme + "://" + r.Host + "/portal/avatars/" + name
+	avatar := base + "/portal/avatars/" + name
 	if err := s.db.PortalSetAvatar(r.Context(), uid, avatar, time.Now().Unix()); err != nil {
 		fail(w, 400, err.Error())
 		return

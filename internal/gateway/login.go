@@ -74,7 +74,17 @@ func NewLoginServer(cfg config.Gateway, store Store, log *slog.Logger, obs *metr
 	// 登录服务本来就接受任意路径，因此直接使用 HandlerFunc，保留 RequestURI。
 	s.handler = http.HandlerFunc(s.handleLogin)
 	if storage, ok := store.(*SQLiteStore); ok {
-		accountPortal := portal.New(storage.DB, s.useridForRemote)
+		// 头像等资源的对外 URL 必须用客户端 HTTP 可达的登录域名（经 hosts 指向本网关 HTTPS 口）。
+	// 注意 AdvertiseHost/Port 是 realtime TCP 地址，不能用于 HTTP 资源。
+	loginHost := s.cfg.LoginDomain
+	if loginHost == "" {
+		loginHost = s.cfg.AdvertiseHost
+	}
+	if loginHost == "" || loginHost == "0.0.0.0" || loginHost == "[::]" {
+		loginHost = "127.0.0.1"
+	}
+	portalBase := "https://" + loginHost
+	accountPortal := portal.New(storage.DB, s.useridForRemote, portalBase)
 		s.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if strings.HasPrefix(r.URL.Path, "/portal/") {
 				accountPortal.ServeHTTP(w, r)
