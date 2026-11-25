@@ -2,9 +2,11 @@ package gameserver
 
 import (
 	"context"
+	"strings"
 	"database/sql"
 	"testing"
 
+	"rf4server/internal/proto"
 	"rf4server/internal/store"
 )
 
@@ -59,4 +61,63 @@ func TestDipConsumeOnCatchOnly(t *testing.T) {
 	if consumed, wear := baitUseRule(def, false); !consumed || wear != 0 {
 		t.Fatalf("上鱼应消耗小药1份: consumed=%v wear=%v", consumed, wear)
 	}
+}
+
+// 完整链路：小药挂在钓组上 → 咬钩快照包含 → 上鱼确认扣1份。
+func TestDipConsumeFullChain(t *testing.T) {
+	srv, db := newRigTestServer(t)
+	ctx := context.Background()
+	def, err := db.GetItemDefByItemID(ctx, "dip_hvz_b")
+	if err != nil || def == nil {
+		t.Skip("静态库缺 dip_hvz_b: ", err)
+	}
+	rod := baitTestRod(t, srv)
+	// 小药挂载到钓组（category 58）
+	_, mounted := baitTestMount(t, srv, rod, def.ItemID, 100, 0)
+	if mounted == "" {
+		t.Fatal("小药未能挂到钓组")
+	}
+	snapshot, known := srv.biteBaitSnapshot(ctx, rod)
+	if !known {
+		t.Fatal("咬钩快照未知")
+	}
+	found := false
+	for _, g := range strings.Fields(snapshot) {
+		if g == mounted {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("咬钩快照缺少小药 GUID %s: %q", mounted, snapshot)
+	}
+	before, err := db.GetItemByGUID(ctx, mounted)
+	if err != nil || before == nil {
+		t.Fatal(err)
+	}
+	beforeQty, _ := itemStackQtyValue(before.WireClass, mustFields(t, before.FieldsJSON))
+	change, err := srv.consumeBaitEvent(ctx, 1000001, rod, "dip-full-chain", []string{mounted}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(change.Removed) == 0 && len(change.Updated) == 0 {
+		t.Fatalf("小药未被扣减: %+v", change)
+	}
+	// 扣减后可能删行（挂载实例 1 份）或更新数量；两者都算生效。
+	after, _ := db.GetItemByGUID(ctx, mounted)
+	var afterQty uint64
+	if after != nil {
+		afterQty, _ = itemStackQtyValue(after.WireClass, mustFields(t, after.FieldsJSON))
+	}
+	if afterQty != beforeQty-1 && !(after == nil && beforeQty == 1) {
+		t.Fatalf("小药应扣1份: before=%d after=%d removed=%v", beforeQty, afterQty, change.Removed)
+	}
+}
+
+func mustFields(t *testing.T, s string) []proto.Field {
+	t.Helper()
+	f, err := FieldsFromJSON(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f
 }

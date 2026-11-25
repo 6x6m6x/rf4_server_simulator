@@ -573,7 +573,10 @@ func (s *Server) biteBaitSnapshot(ctx context.Context, rod string) (string, bool
 	}
 	comps := s.storedRigComponents(ctx, rod)
 	var ids []string
-	for _, category := range []int64{27, 17} {
+	// 用户补丁：cat58 小药（引诱成分）纳入咬钩快照，使上鱼确认时
+	// consumeHookedBait 能遍历到它并按 baitUseRule 扣 1 份。抛竿快照
+	// consumeCastBait 走整棵组件树，cast=true 分支不扣小药，不会重复。
+	for _, category := range []int64{27, 17, 58} {
 		for _, key := range rigCompKeysOfCategory(comps, category) {
 			ids = append(ids, comps[key].GUID)
 		}
