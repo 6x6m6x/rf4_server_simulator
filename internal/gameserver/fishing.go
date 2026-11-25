@@ -715,7 +715,8 @@ const newtonPerKgf = 9.80665
 // K0 = 1kg 体重时的 k（N/kg）；Slope = k 对 ln(w_kg) 的斜率。
 // 2026-11-16/17 断电抢救包 53 条 14/14 A 级样本（累计 84 条）发现鱼种分两类：
 //   - 恒 k 类（Slope=0）：海鱼与小型鱼，k 落在离散集合 {17.66, 18.64, 19.62,
-//     21.58, 22.56, 23.54, 25.53}，同种跨体重档 k 精确不变（coalfish/atl_cod
+//     20.60, 21.58, 22.56, 23.54, 25.53}（= 9.81×{1.8…2.6} 的 0.1 档），同种
+//     跨体重档 k 精确不变（coalfish/atl_cod
 //     702~5677g 恒 21.58、m_scorpius 205~1142g 恒 17.66、shemaya_cha/tiulka/
 //     menek 恒 18.64），疑似服务端曲线池直配幅值；
 //   - 变 k 类（Slope 0.23~0.59）：鲤科淡水鱼，k 随体重对数上行，斜率鱼种各异。
@@ -737,17 +738,18 @@ var fishPullK0 = map[string]fishPullParam{
 	"c.roach": {K0: 16.36, Slope: 0.23}, // 3 样本 150~713g
 	"rudd":    {K0: 19.24, Slope: 0.53}, // 4 样本 195~402g（2026-11-16 新实测）
 	"g_carp":  {K0: 18.79, Slope: 0.23}, // 5 样本 4880~21742g
-	"m_carp":  {K0: 16.27, Slope: 0.59}, // 4 样本 2312~5370g（新）；仅拟合参数、无单样本 f8 锚点（低置信，见 spec v2）
+	"m_carp":  {K0: 16.27, Slope: 0.59}, // 4 样本 2312~5370g；v2.2 已恢复 4 个单样本 f8 锚点
 	// —— 单样本（Slope<0 → 全局 0.35；鲤科按鲤科先验）——
 	"carp_ghost": {K0: 16.73, Slope: -1}, // 4513g（新）
 	"n_carp":     {K0: 16.53, Slope: -1}, // 4405g（新）
 	"kw_tench":   {K0: 18.68, Slope: -1}, // 987g（新）
 	"c_bleak":    {K0: 18.81, Slope: -1}, // 24g（新；ln 外推远，低置信）
+	"a_char":     {K0: 20.07, Slope: -1}, // 415g（鲑科首测，旧路亚包流 3 补挖）
+	"gc_smelt":   {K0: 20.15, Slope: -1}, // 772g（同上）
 	"n.pike":     {K0: 17.30, Slope: -1},
 	"din_l_carp": {K0: 16.94, Slope: -1},
 	"b_carp":     {K0: 18.00, Slope: -1},
 	"s.bream":    {K0: 13.00, Slope: -1},
-	"merlang":    {K0: 21.10, Slope: -1}, // 252g 实测 k=20.60；海鱼疑似恒k，待第二样本
 	// —— 恒 k 类（海鱼/小型鱼，Slope=0）——
 	"coalfish":      {K0: 21.58, Slope: 0}, // 4 样本 702~3027g 精确恒
 	"atl_cod":       {K0: 21.58, Slope: 0}, // 2 样本 2674~5677g
@@ -763,6 +765,7 @@ var fishPullK0 = map[string]fishPullParam{
 	"taran":         {K0: 18.64, Slope: 0}, // 611g 实测 k 与离散值精确重合，v2 重估
 	"piksha":        {K0: 18.64, Slope: 0}, // 2975g 同上
 	"b_gill":        {K0: 19.62, Slope: 0}, // 113g 同上
+	"merlang":       {K0: 20.60, Slope: 0}, // 252g 实测 k=20.60=2.1×9.81，落恒 k 离散档
 }
 
 // fishPullGroupK0 是未实测鱼种的习性组拉力参数（v2：组值按组内实测成员标定，
@@ -783,7 +786,7 @@ var fishPullGroupK0 = map[string]fishPullParam{
 	"pond_carp":       {K0: 13.84, Slope: 0.45}, // 小型池塘鲤（变k锚 c.carp {13.84, 0.45}）
 	"predator":        {K0: 17.30, Slope: -1},   // 梭形掠食者（K0 锚 n.pike 17.30，斜率先验 0.35）
 	"weak_silver":     {K0: 13.00, Slope: -1},   // 小型银色弱鱼/贝类/虾蛙（变k锚 s.bream {13.00, 0.35}；crawfish 无拉力数据按体型归入）
-	"salmonid":        {K0: 18.00, Slope: -1},   // 鲑科（纯估计 18.0，无新数据；crawfish/pinagor 已按习性移出，见 spec v2.1 修正）
+	"salmonid":        {K0: 20.11, Slope: -1},   // 鲑科（按实测成员 a_char/gc_smelt 的 K0 均值标定，斜率仍为先验；crawfish/pinagor 已按习性移出，见 spec v2.1 修正）
 	"sturgeon":        {K0: 17.00, Slope: -1},   // 鲟科（纯估计 17.0）
 	"catfish":         {K0: 16.00, Slope: -1},   // 鲶科（纯估计 16.0）
 	"flatfish":        {K0: 16.00, Slope: -1},   // 比目鱼（纯估计 16.0）
@@ -937,7 +940,6 @@ var fishPullSpeciesGroup = map[string]string{
 	"mytilus_ed":          "weak_silver",
 	"ostrea_ed":           "weak_silver",
 	"s_freaks":            "weak_silver",
-	"a_char":              "salmonid",
 	"a_grayling":          "salmonid",
 	"a_omul":              "salmonid",
 	"a_salmon":            "salmonid",
@@ -948,7 +950,6 @@ var fishPullSpeciesGroup = map[string]string{
 	"chir":                "salmonid",
 	"crawfish":            "weak_silver",
 	"dr_char":             "salmonid",
-	"gc_smelt":            "salmonid",
 	"golets_lev":          "salmonid",
 	"gorbusha":            "salmonid",
 	"k_salmon":            "salmonid",
@@ -1319,6 +1320,9 @@ func (s *Server) rollFishFromDB(loc, bait string) *RolledFish {
 
 func (s *Server) rollFishFromDBWithRules(loc, bait string, gearCapKg float64, bonus fishingSkillBonus, contexts ...fishRollContext) *RolledFish {
 	c := rollContext(contexts)
+	if c.loc == "" {
+		c.loc = loc
+	}
 	if c.baits == nil {
 		c.baits = []string{bait}
 	}
@@ -1375,10 +1379,10 @@ func (s *Server) rollFishFromDBWithRules(loc, bait string, gearCapKg float64, bo
 	}
 	// 硬性鱼口资格门（bite_gate_enabled，默认关）：拟饵不喂非掠食鱼、
 	// 天然饵按攻略+生态双票、水层超界只留极小杂口。剔空整杆走
-	// 「本轮无符合条件的鱼」重排。空因写进 c.emptyReason（诊断日志用）。
+	// 「本轮无符合条件的鱼」重排。空因写进 c.audit（诊断日志用）。
 	markEmpty := func(reason string) {
-		if c.emptyReason != nil {
-			*c.emptyReason = reason
+		if c.audit != nil {
+			c.audit.emptyReason = reason
 		}
 	}
 	if gate := s.biteGateConfig(); gate.enabled {
@@ -1440,6 +1444,11 @@ func (s *Server) rollFishFromDBWithRules(loc, bait string, gearCapKg float64, bo
 	// companion 周纪录饵效（config bait_pref_scale / bait_pref_weight_shift；
 	// 缺表=空，运行中性）。tier：top5=3 / top20=2 / 在列=1 → ×8/×4/×2；
 	// 未在列 ×(0.9 - 0.6×覆盖度)（覆盖度 = total_evidence/200，封顶 1）。
+	//
+	// bait_pref_scale 是「这层效果有多强」的强度系数，必须作用在「与 1 的差距」
+	// 上（mult^scale），不能整体乘到每个候选上：所有候选同乘一个常数会在
+	// weightedChoice 归一化时约掉，等于配了没效果；只有把 ≥1 的倍率推向更强、
+	// 把 <1 的倍率压得更低，才会改变鱼种占比。0 表示整层关闭。
 	prefScale := s.tunableF("bait_pref_scale", 1.0)
 	var tiers map[string]int64
 	var meta map[string]int64
@@ -1454,7 +1463,7 @@ func (s *Server) rollFishFromDBWithRules(loc, bait string, gearCapKg float64, bo
 		for i, key := range keys {
 			t := tiers[key]
 			if t > 0 {
-				wts[i] *= companionTierMult(t) * prefScale
+				wts[i] *= baitPrefScale(companionTierMult(t), prefScale)
 				baitHit = true
 				continue
 			}
@@ -1463,7 +1472,7 @@ func (s *Server) rollFishFromDBWithRules(loc, bait string, gearCapKg float64, bo
 			if cov > 1.0 {
 				cov = 1.0
 			}
-			wts[i] *= (0.9 - 0.6*cov) * prefScale
+			wts[i] *= baitPrefScale(0.9-0.6*cov, prefScale)
 		}
 	}
 	scale := s.tunableF("fish_weight_scale", 1)
@@ -1543,7 +1552,8 @@ func (s *Server) rollFishFromDBWithRules(loc, bait string, gearCapKg float64, bo
 		// 咬钩落点审计：世界坐标 + 40m 网格 + 命中的区域名册（后台划区对账用）。
 		// resolveFishZone 与 applyFishZoneRoster 同源（缓存复用），纯查不改判鱼结果。
 		s.log.Info("咬钩落点", "鱼种", key, "x", math.Round(c.x), "z", math.Round(c.z),
-			"网格", fishArea(statLoc, c), "区域", zoneHitNote(s.fishZonesFor(cctx, statLoc), c))
+			"网格", fishArea(statLoc, c), "名册区域", zoneHitNote(s.fishZonesFor(cctx, statLoc), c),
+			"海图区号", c.runtime.chartZoneLabel(), "攻略标深", c.runtime.guideSpotLabel())
 		if s.huntStateEnabled() && c.uid > 0 {
 			s.log.Info("发鱼阶段", "uid", c.uid, "loc", c.loc, "spot", c.spot,
 				"stage", s.fishHuntStageName(huntReady.Mode, huntReady.Stage), "A", roundTo(huntReady.A, 3),
@@ -1554,6 +1564,21 @@ func (s *Server) rollFishFromDBWithRules(loc, bait string, gearCapKg float64, bo
 		return f
 	}
 	return nil
+}
+
+// baitPrefScale 把饵效基础倍率按「饵料影响力」拉伸到与 1 的偏差方向。
+//
+// mult 是这层给出的原倍率（≥1 表示饵对口、<1 表示不对口）；scale>1 让对口鱼
+// 更集中、不对口鱼更少，0<scale<1 反过来把差距拉平，scale=0 由调用方整层关闭。
+// 直接乘 scale 不行：所有候选同乘一个常数在归一化时会被约掉。
+func baitPrefScale(mult, scale float64) float64 {
+	if mult <= 0 || scale <= 0 {
+		return mult
+	}
+	if scale == 1 {
+		return mult
+	}
+	return math.Pow(mult, scale)
 }
 
 // companionTierMult 将饵效档位转换为权重倍率。
@@ -2484,8 +2509,8 @@ func (s *Server) fishStaminaForProfile(f *RolledFish, profile fishFightProfile) 
 }
 
 // fishStaminaRatePerGram 是官方 14/14 抓包实测鱼种的 f5 每克均值（2026-11-11
-// 31 样本 + 2026-11-16/17 断电抢救包 53 样本；见
-// specs/changes/fish-official-data-tables/spec.md 与 fish-pull-k-table v2）。
+// 31 样本 + 2026-11-16/17 断电抢救包 53 样本 + 2026-11-10 旧路亚包流 3 的鲑科
+// 2 样本；见 specs/changes/fish-official-data-tables/spec.md 与 fish-pull-k-table v2）。
 // 海钓科目的官方值远高于旧版常数 2.388（merlang 10.5 / 鲭鲱类 11.7~19.3）。
 // 每克均值本身随体重下行（crucian 193g 2.79 → 611g 1.78），此处为样本均值口径。
 var fishStaminaRatePerGram = map[string]float64{
@@ -2499,7 +2524,9 @@ var fishStaminaRatePerGram = map[string]float64{
 	"menek":         7.37,
 	"atl_cod":       6.79,
 	"piksha":        6.39,
+	"a_char":        6.12,
 	"s.bream":       5.87,
+	"gc_smelt":      5.49,
 	"pumps_sunfish": 4.75,
 	"b_gill":        4.07,
 	"m_scorpius":    3.98,
@@ -2514,6 +2541,7 @@ var fishStaminaRatePerGram = map[string]float64{
 	"c.roach":       2.51,
 	"g_carp":        2.44,
 	"crucian":       2.29,
+	"m_carp":        2.24,
 	"carp_ghost":    2.32,
 	"carp":          2.10,
 	"b_carp":        2.09,
@@ -2522,15 +2550,18 @@ var fishStaminaRatePerGram = map[string]float64{
 }
 
 // fishF6Table 是官方实测鱼种的 f6 抗疲劳系数（0.05 步进量化值）。语义：
-// 疲劳速率 ∝ (1−f6)，f6=1 永不疲劳。官方种内还有随体重的 0.05 台阶
-// （fishF6Step），v1 只对已钉死的两种建模，其余取基值。
+// 疲劳速率 ∝ (1−f6)，f6=1 永不疲劳。表值是小档侧的基值；官方同种鱼跨档后
+// f6 会上一个台阶（fishF6Step），其余实测种各档同值、不设台阶。
 var fishF6Table = map[string]float64{
 	"n.pike":     0.80,
 	"perch":      0.70,
 	"g_carp":     0.70,
 	"b_carp":     0.70,
 	"carp":       0.65,
+	"m_carp":     0.65,
 	"din_l_carp": 0.65,
+	"a_char":     0.50,
+	"gc_smelt":   0.50,
 	"c.roach":    0.50,
 	"taran":      0.50,
 	"b_gill":     0.50,
@@ -2545,10 +2576,15 @@ var fishF6Step = map[string]struct {
 	AboveG int64
 	F6     float64
 }{
-	// 官方样本：perch 93-342g→0.70 / 642-1070g→0.80；crucian 193-293g→0.55 /
-	// 611-743g→0.60。台阶边界取两档中点。
-	"perch":   {AboveG: 500, F6: 0.80},
+	// 官方样本（低档侧 ~ 高档侧）：perch 93~342g→0.70 / 374~1070g→0.80；
+	// crucian 193~341g→0.55 / 527~743g→0.60；carp 1063~2434g→0.65 /
+	// 4137~5710g→0.75；m_carp 2312~3494g→0.65 / 4756~5370g→0.75。
+	// 台阶边界取两侧最近样本中点后按档位取整：perch 358→360g、
+	// carp 3285.5→3300g、m_carp 4125→4100g；crucian 沿用既有 450g。
+	"perch":   {AboveG: 360, F6: 0.80},
 	"crucian": {AboveG: 450, F6: 0.60},
+	"carp":    {AboveG: 3300, F6: 0.75},
+	"m_carp":  {AboveG: 4100, F6: 0.75},
 }
 
 // fishStaminaRateGroupFor 未实测鱼种的 f5 每克组均值：海水组 8.445
@@ -3109,9 +3145,9 @@ func (s *Server) onRodBiteTimerTicket(uid int64, st *FishState, ticket fishingTi
 		st.mu.Unlock()
 		return
 	}
-	x, z, hasPos := st.CastPosX, st.CastPosZ, st.HasCastPos
-	if !hasPos {
-		x, z, hasPos = st.PosX, st.PosZ, st.HasPos
+	groundX, groundZ, hasGroundPos := st.CastPosX, st.CastPosZ, st.HasCastPos
+	if !hasGroundPos {
+		groundX, groundZ, hasGroundPos = st.PosX, st.PosZ, st.HasPos
 	}
 	probability := s.biteProbabilityForLoc(st.Loc)
 	// 用户补丁：海洋钓组（rigType 50-60，rig_Marine*，"海洋钓鱼"技能内可检索）
@@ -3124,7 +3160,7 @@ func (s *Server) onRodBiteTimerTicket(uid int64, st *FishState, ticket fishingTi
 		probability = math.Min(.95, probability)
 	}
 	// 窝料死窝闸门：同一格子堆超过 15 份开始压开口率，22 份以上不排咬钩。
-	probability *= s.groundbaitBiteGate(s.dbCtx(), uid, st.Loc, x, z, hasPos, st.Spot, st.RigType)
+	probability *= s.groundbaitBiteGate(s.dbCtx(), uid, st.Loc, groundX, groundZ, hasGroundPos, st.Spot, st.RigType)
 	// 饵效控速：单轮判定概率按对口分三档（路亚轮单独一套参数）。
 	// 受当前开关门控（审查 P2-1）：运行中热关闭后，残留的 st.PaceKnown
 	// 不得继续压低本杆开口率。
@@ -3141,13 +3177,12 @@ func (s *Server) onRodBiteTimerTicket(uid int64, st *FishState, ticket fishingTi
 	lureSpeed := st.ReelSetting
 	boatOn, boatKnown := st.onBoatLocked(now.Unix())
 	buildRollCtx := func(pity bool) fishRollContext {
-		var reason string
 		return fishRollContext{
-			x: x, z: z, hasPos: hasPos, spot: st.Spot, depthCM: baitDepthCM,
+			x: st.CastPosX, z: st.CastPosZ, hasPos: st.HasCastPos, spot: st.Spot, depthCM: baitDepthCM,
 			lureLayer: lureLayer, lureAction: lureAction, lureMask: lureMask, lureSpeed: lureSpeed, rigType: rigType,
 			onBoat: boatOn, boatKnown: boatKnown, pityEnv: pity,
-			emptyReason: &reason,
-			now:         now, weather: sess.weatherAt(st.Loc, now), happyBite: sess.currentHappyHour().BiteBonus,
+			audit: &fishRollAudit{},
+			now:   now, weather: sess.weatherAt(st.Loc, now), happyBite: sess.currentHappyHour().BiteBonus,
 		}
 	}
 	rollCtx := buildRollCtx(false)
@@ -3157,8 +3192,8 @@ func (s *Server) onRodBiteTimerTicket(uid int64, st *FishState, ticket fishingTi
 		// 保底杂口（bite_gate_pity_rounds，0=关）：连续空杆后放宽环境类因素重掷一次，
 		// 食性硬门不动——泥鳅依然不攻亮片，只是「鱼群不在/水层不对」不再死寂。
 		if pityN := int(s.tunableF("bite_gate_pity_rounds", 0)); pityN > 0 && st.EmptyStreak >= pityN {
-			pityCtx := buildRollCtx(true)
-			if f = s.rollFishForRig(s.dbCtx(), uid, st.GearGuid, st.Loc, st.Bait, st.Bonus, pityCtx); f != nil {
+			rollCtx = buildRollCtx(true)
+			if f = s.rollFishForRig(s.dbCtx(), uid, st.GearGuid, st.Loc, st.Bait, st.Bonus, rollCtx); f != nil {
 				st.EmptyStreak = 0
 				s.log.Info("保底杂口", "rod", shortGUID(st.GearGuid), "鱼种", f.Species, "连续空轮", pityN)
 			}
@@ -3166,22 +3201,28 @@ func (s *Server) onRodBiteTimerTicket(uid int64, st *FishState, ticket fishingTi
 	}
 	if f == nil {
 		// 空轮也带落点、区域命中与空因：后台对账用，不推玩家提示。
-		rollC := fishRollContext{x: x, z: z, hasPos: hasPos}
-		zoneNote := zoneHitNote(s.fishZonesFor(s.dbCtx(), st.Loc), rollC)
-		reason := "概率/权重全零"
-		if rollCtx.emptyReason != nil && *rollCtx.emptyReason != "" {
-			reason = *rollCtx.emptyReason
+		audit := rollCtx.audit
+		rollCtx.runtime = audit.runtime
+		gridLoc := audit.statLoc
+		if gridLoc == "" {
+			gridLoc = st.Loc
+		}
+		zoneNote := zoneHitNote(s.fishZonesFor(s.dbCtx(), audit.statLoc), rollCtx)
+		reason := audit.emptyReason
+		if reason == "" {
+			reason = "概率/权重全零"
 		}
 		s.log.Info("本轮无符合条件的鱼，继续等待", "rod", shortGUID(st.GearGuid), "rig_type", st.RigType,
-			"x", math.Round(x), "z", math.Round(z), "网格", fishArea(st.Loc, rollC), "区域", zoneNote, "空因", reason,
-			"连续空轮", st.EmptyStreak)
+			"x", math.Round(rollCtx.x), "z", math.Round(rollCtx.z), "有饵落点", rollCtx.hasPos, "场景", st.Loc, "网格", fishArea(gridLoc, rollCtx),
+			"名册区域", zoneNote, "海图区号", audit.runtime.chartZoneLabel(), "攻略标深", audit.runtime.guideSpotLabel(),
+			"空因", reason, "连续空轮", st.EmptyStreak)
 		s.emptyWeatherBiteLocked(sess, st, now)
 		st.mu.Unlock()
 		return
 	}
 	st.EmptyStreak = 0
 	// 鱼吃口扣份：窝被吃薄，死窝会自己缓过来（设计稿第 6 节）。
-	s.groundbaitConsumeBite(s.dbCtx(), uid, st.Loc, x, z, hasPos, st.Spot, s.tunableF("groundbait_consume_bite", 0.20))
+	s.groundbaitConsumeBite(s.dbCtx(), uid, st.Loc, groundX, groundZ, hasGroundPos, st.Spot, s.tunableF("groundbait_consume_bite", 0.20))
 	if !f.BaitsKnown {
 		f.BaitGUIDs, f.BaitsKnown = s.biteBaitSnapshot(s.dbCtx(), st.GearGuid)
 	}

@@ -34,7 +34,7 @@ func TestPortalIdentityPurchaseReplayAndLogout(t *testing.T) {
 			return 42
 		}
 		return 43
-	})
+	}, "")
 	call := func(method, path, token, body, remote, origin string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "https://game.test"+path, strings.NewReader(body))
 		r.RemoteAddr = remote
