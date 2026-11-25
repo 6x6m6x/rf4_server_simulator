@@ -115,7 +115,7 @@ func TestActiveFishPageRendersBaitRotation(t *testing.T) {
 	for _, sub := range []string{
 		"row.bait_groups",                    // 用后端权威轮换组
 		"row.bait_rotate_sec",                // 轮换时间来自同一行
-		"baitLine(f, baitByKey[f.fish_key])", // 钓场列表按鱼行渲染饵料摘要
+		"row.bait_rotate_mode", // 我方旧版 UI：钓场列表按鱼行读取后端轮换组/模式
 	} {
 		if !strings.Contains(string(waters), sub) {
 			t.Errorf("当前钓场模块缺少轮换同步标记：%q", sub)
