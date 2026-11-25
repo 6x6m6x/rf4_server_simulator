@@ -70,12 +70,22 @@ func hSocialUserProfile(ctx *Ctx) ([]byte, bool) {
 		if stats322 := buildStats322W(worldTotalGameMin(time.Now())); stats322 != nil {
 			fields[1] = stats322
 		}
-		if stats321, err := s.buildStats321(ctx.Sess.pushCtx(), uid); err == nil && stats321 != nil {
-			fields[2] = stats321
+		// 官服 f2=obj321 鱼类记录。只填标量计数：复用 buildStats321 的嵌套
+		// args(129)/卡牌对象在 feaidppnpch 的 VAL 内会编码出非法 marker，
+		// 客户端打开他人资料卡时报「内部错误」。鱼明细另走 24/21/24/24。
+		if rows, err := s.loadCatchStatRows(ctx.Sess.pushCtx(), uid); err == nil {
+			var rare, blue int64
+			for _, r := range rows {
+				if r.Grade >= 3 { rare++ }
+				if r.Grade >= 4 { blue++ }
+			}
+			fields[2] = wiregen.MustMakeObj("jahbacemfof", map[int]*proto.Value{
+				0: proto.U32(uint32(len(rows))),
+				1: proto.U32(uint32(rare)),
+				2: proto.U32(uint32(blue)),
+			})
 		}
 	}
-	fields[3] = proto.Args(proto.S("186"))
-	fields[8] = proto.StrVal("")
 	inner := wiregen.MustMakeObj("feaidppnpch", fields)
 	outer, err := bytesWrappedObject(inner, ctx.Sess.Table())
 	if err != nil {
