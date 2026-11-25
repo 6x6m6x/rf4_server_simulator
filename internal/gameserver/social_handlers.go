@@ -86,6 +86,13 @@ func hSocialUserProfile(ctx *Ctx) ([]byte, bool) {
 			})
 		}
 	}
+	// 官服抓包 f3~f8：按官服类型填空数组/串，避免客户端读到零值(0x00)当 marker 解析异常。
+	fields[3] = proto.Args(proto.S("186"))
+	fields[4] = proto.TypedU32Arr("311", nil)
+	fields[5] = proto.Args(proto.S("185"))
+	fields[6] = proto.Args(proto.S("132"))
+	fields[7] = proto.Args(proto.S("207"))
+	fields[8] = proto.StrVal("")
 	inner := wiregen.MustMakeObj("feaidppnpch", fields)
 	outer, err := bytesWrappedObject(inner, ctx.Sess.Table())
 	if err != nil {
