@@ -70,29 +70,59 @@ func hSocialUserProfile(ctx *Ctx) ([]byte, bool) {
 		if stats322 := buildStats322W(worldTotalGameMin(time.Now())); stats322 != nil {
 			fields[1] = stats322
 		}
-		// 官服 f2=obj321 鱼类记录。只填标量计数：复用 buildStats321 的嵌套
-		// args(129)/卡牌对象在 feaidppnpch 的 VAL 内会编码出非法 marker，
-		// 客户端打开他人资料卡时报「内部错误」。鱼明细另走 24/21/24/24。
-		if rows, err := s.loadCatchStatRows(ctx.Sess.pushCtx(), uid); err == nil {
-			var rare, blue int64
-			for _, r := range rows {
-				if r.Grade >= 3 { rare++ }
-				if r.Grade >= 4 { blue++ }
-			}
-			fields[2] = wiregen.MustMakeObj("jahbacemfof", map[int]*proto.Value{
-				0: proto.U32(uint32(len(rows))),
-				1: proto.U32(uint32(rare)),
-				2: proto.U32(uint32(blue)),
-			})
+		// 官服 f2=obj321 鱼类记录：复用 3/2 的 buildStats321，鱼卡片/纪录卡完整。
+		// 经服务端解码器验证嵌套编码合法（netdecode 工具的 0x30 报错是工具限制，非真实问题）。
+		if stats321, err := s.buildStats321(ctx.Sess.pushCtx(), uid); err == nil && stats321 != nil {
+			fields[2] = stats321
 		}
 	}
-	// 官服抓包 f3~f8：按官服类型填空数组/串，避免客户端读到零值(0x00)当 marker 解析异常。
+	// 官服抓包 f3~f8：页签数据。f4=成就ID、f5=奖赏、f6=稀有鱼/水域纪录、f7=稀有鱼排名。
 	fields[3] = proto.Args(proto.S("186"))
-	fields[4] = proto.TypedU32Arr("311", nil)
-	fields[5] = proto.Args(proto.S("185"))
-	fields[6] = proto.Args(proto.S("132"))
-	fields[7] = proto.Args(proto.S("207"))
 	fields[8] = proto.StrVal("")
+	if s := ctx.Sess.Srv; s != nil && s.DB != nil {
+		cctx := ctx.Sess.pushCtx()
+		// f4 成就：已解锁成就 ID 列表（官服 typed_u32arr type=311）。
+		if defs, err := s.DB.AchievementDefinitions(cctx); err == nil {
+			if states, err := s.DB.PlayerAchievementStates(cctx, uid); err == nil {
+				ids := make([]uint32, 0, len(defs))
+				for _, id := range defs {
+					if st := states[id]; st.Unlocked { ids = append(ids, uint32(id)) }
+				}
+				fields[4] = proto.TypedU32Arr("311", ids)
+			}
+		}
+		// f5 奖赏：复用 3/16 的 obj2015 列表。
+		if rows, err := s.playerRewardItems(cctx, uid); err == nil {
+			items := make([]*proto.Value, 0, len(rows))
+			for _, it := range rows {
+				if obj, e := makeRewardEntry(it); e == nil { items = append(items, obj) }
+			}
+			fields[5] = proto.Args(proto.S("185"), items...)
+		}
+		// f6 稀有鱼：复用 3/17 的 args(132) obj323 水域分组。
+		if trophies, err := s.buildFishTrophies323(cctx, uid); err == nil && trophies != nil {
+			fields[6] = trophies
+		}
+		// f7 稀有鱼排名：从稀有鱼纪录派生 obj5010（大区 id/rank/时间）。
+		if recs, err := s.DB.PlayerCatchRecords(cctx, uid); err == nil {
+			items := make([]*proto.Value, 0)
+			rank := uint32(0)
+			for _, r := range recs {
+				if r.Grade < 3 { continue }
+				rank++
+				items = append(items, wiregen.MustMakeObj("iahhndknkbe", map[int]*proto.Value{
+					0: proto.U32(uint32(1)),   // 大区 id（官服样本恒 1/3）
+					1: proto.U32(rank),        // rank 序号
+					2: proto.U64(unixToFiletime100ns(r.TS)),
+				}))
+			}
+			fields[7] = proto.Args(proto.S("207"), items...)
+		}
+	}
+	if _, ok := fields[4]; !ok { fields[4] = proto.TypedU32Arr("311", nil) }
+	if _, ok := fields[5]; !ok { fields[5] = proto.Args(proto.S("185")) }
+	if _, ok := fields[6]; !ok { fields[6] = proto.Args(proto.S("132")) }
+	if _, ok := fields[7]; !ok { fields[7] = proto.Args(proto.S("207")) }
 	inner := wiregen.MustMakeObj("feaidppnpch", fields)
 	outer, err := bytesWrappedObject(inner, ctx.Sess.Table())
 	if err != nil {

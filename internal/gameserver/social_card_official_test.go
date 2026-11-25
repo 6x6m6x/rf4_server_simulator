@@ -44,3 +44,28 @@ func TestSocialUserProfileHasOfficialFields(t *testing.T) {
 		if f.Val == nil { t.Fatalf("24/18.f%d VAL 为空", i) }
 	}
 }
+
+// 24/18 页签数据：f4 成就ID、f5 奖赏、f6 稀有鱼分组、f7 排名须为官服类型，
+// 不再空占位（用户反馈渔获/稀有鱼/成就页空白）。
+func TestSocialUserProfileTabFields(t *testing.T) {
+	env := newDLineTestEnv(t, 100)
+	registerSocialHandlers(env.srv.dispatch)
+	if _, err := env.db.EnsureProfile(context.Background(), 200); err != nil { t.Fatal(err) }
+	card := decodeWrappedBytes(t, env.invoke(t, 24, 18, proto.Args524(proto.U32(200))))
+	// f4 typed_u32arr(311)、f5~f7 args(code)
+	if f := card.Fields[4].Val; f == nil || f.Kind != proto.KindTypedU32Arr || f.TypeName != "311" {
+		t.Fatalf("24/18.f4 成就类型错: %+v", f)
+	}
+	for _, i := range []int{5, 6, 7} {
+		f := card.Fields[i].Val
+		if f == nil || f.Kind != proto.KindArgs || f.Code == nil {
+			t.Fatalf("24/18.f%d 非 args: %+v", i, f)
+		}
+	}
+	want := map[int]string{5: "185", 6: "132", 7: "207"}
+	for i, code := range want {
+		if got := card.Fields[i].Val.Code; got == nil || *got != code {
+			t.Fatalf("24/18.f%d code=%v 期望 %s", i, got, code)
+		}
+	}
+}
