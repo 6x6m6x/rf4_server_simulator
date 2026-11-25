@@ -908,6 +908,7 @@ func hCastPrepare(ctx *Ctx) ([]byte, bool) {
 	st.LureToggleAt = time.Time{}
 	st.LureStateAt = time.Time{}
 	st.LureLayerAt = time.Time{}
+	resetMarineLayerLocked(st)
 	depthCM := st.DepthCM
 	rigType := newRigType
 	st.mu.Unlock()
@@ -1280,8 +1281,11 @@ func hFishingStep(ctx *Ctx) ([]byte, bool) {
 			previousMask := st.LureMotionMask
 			st.LureMotionMask = anim
 			isLure := rigTypeLureFamily[st.RigType]
+			now := time.Now()
+			if marineRigType(st.RigType) {
+				ctx.Sess.Srv.updateMarineLayerLocked(st, anim, now)
+			}
 			if isLure {
-				now := time.Now()
 				if anim != previousMask || st.LureLayerAt.IsZero() || now.Sub(st.LureLayerAt) >= 1500*time.Millisecond {
 					st.LureLayer = lureLayerFromMotion(anim, st.LureLayer, st.LureDive)
 					st.LureLayerAt = now
@@ -1306,6 +1310,7 @@ func hFishingStep(ctx *Ctx) ([]byte, bool) {
 					ctx.Log.Warn("入水窝料扣减失败", "err", err)
 					st.mu.Lock()
 					st.InWater = false
+					resetMarineLayerLocked(st)
 					st.mu.Unlock()
 					return nil, true
 				}
@@ -1329,6 +1334,7 @@ func hFishingStep(ctx *Ctx) ([]byte, bool) {
 					"mask", fmt.Sprintf("0x%X", anim&lureMotionStatusMask),
 					"action", st.LureAction, "layer", st.LureLayer,
 					"layer_cm", st.effectiveBaitDepthCMLocked(time.Now()),
+					"marine_state", st.MarineState, "marine_layer", st.MarineLayer,
 					"speed", st.ReelSetting, "state_age_ms", stateAgeMS)
 			}
 		}
@@ -1845,6 +1851,7 @@ func hFishingEnd(ctx *Ctx) ([]byte, bool) {
 	st.mu.Lock()
 	st.InWater = false
 	st.NeedBite = false
+	resetMarineLayerLocked(st)
 	st.mu.Unlock()
 	body, ok := ctx.Sess.Srv.fishingEndSettle(ctx)
 	ctx.Log.Info("14/4 收竿", "handled", ok, "bytes", len(body))
