@@ -229,6 +229,7 @@ func TestFishBaitNoCandidateTimerAndHotReload(t *testing.T) {
 
 func TestSwordfishRollRespectsSeaGuideLocation(t *testing.T) {
 	s, db := newStaticRigTestServer(t)
+	if err := db.TunableSet(t.Context(), "marine_rig_map_limit", "0", "test"); err != nil { t.Fatal(err) }
 	setBaitRuleSwitch(t, s, "1")
 	// 复现岸边实钓时的全图名册：只启用剑鱼，地点和拟饵须继续筛选。
 	if _, err := db.SQL.Exec(`INSERT INTO fish_weight_override(loc,fish_key,weight,enabled,updated_by,updated_ts)
@@ -313,6 +314,7 @@ func TestSwordfishRollRespectsSeaGuideLocation(t *testing.T) {
 
 func TestSeaBaitEmptyRollLogsChartAndRosterZone(t *testing.T) {
 	s, db := newStaticRigTestServer(t)
+	if err := db.TunableSet(t.Context(), "marine_rig_map_limit", "0", "test"); err != nil { t.Fatal(err) }
 	setBaitRuleSwitch(t, s, "1")
 	saveZoneForTest(t, db, store.FishZone{
 		Loc: "挪威海", Name: "试钓区", Kind: "sea_zone", SeaZones: []int64{15, 75}, Mode: "exclusive", Enabled: true,

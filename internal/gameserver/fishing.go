@@ -3153,7 +3153,8 @@ func (s *Server) onRodBiteTimerTicket(uid int64, st *FishState, ticket fishingTi
 	// 用户补丁：海洋钓组（rigType 50-60，rig_Marine*，"海洋钓鱼"技能内可检索）
 	// 是挪威海专用（官服行为，服务端控制）。非海图时开口率归零 → 走下方既有
 	// "鱼口未命中，继续等待"分支：不咬口、不结算、无异常包；其它钓组不受影响。
-	if marineBlockedOnLevel(st.RigType, s.currentLevel(uid)) {
+	// 用户补丁：海洋钓组限制可用 tunable marine_rig_map_limit=0 临时关闭（测试/特殊场景）。
+	if s.tunableF("marine_rig_map_limit", 1) != 0 && marineBlockedOnLevel(st.RigType, s.currentLevel(uid)) {
 		probability = 0
 	}
 	if s.tunableF("fish_bait_rules_enabled", 0) == 1 || s.tunableF("fish_weather_enabled", 0) == 1 {
