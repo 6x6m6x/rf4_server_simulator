@@ -2,6 +2,7 @@ package gameserver
 
 import (
 	"context"
+	"encoding/hex"
 	"testing"
 
 	"rf4server/internal/proto"
@@ -25,12 +26,21 @@ func TestSocialUserProfileHasOfficialFields(t *testing.T) {
 	if card.Fields[2].Val == nil || card.Fields[2].Val.Kind != proto.KindObj || card.Fields[2].Val.Class != "jahbacemfof" {
 		t.Fatalf("24/18.f2 缺 obj321 鱼类记录: %+v", card.Fields[2])
 	}
-	// 关键回归：整包必须能被重新编码并解码（此前嵌套 buildStats321 产生非法 marker 0x30，
-	// 客户端打开他人资料卡报「内部错误」）。
+	// 关键回归：编码→外层bytes→内层obj完整解码，10字段VAL非空。
+	// 此前嵌套 buildStats321 出非法 marker、f3~f7 零值，客户端报「内部错误」。
 	outer := env.invoke(t, 24, 18, proto.Args524(proto.U32(200)))
 	raw, err := proto.EncodeValue(outer, env.sess.Table())
 	if err != nil { t.Fatalf("24/18 编码失败: %v", err) }
-	if _, _, err := proto.DecodeValue(raw, 0, wiregen.Table()); err != nil {
-		t.Fatalf("24/18 回包解码失败(非法marker): %v", err)
+	outerVal, _, err := proto.DecodeValue(raw, 0, wiregen.Table())
+	if err != nil { t.Fatalf("24/18 外层解码失败: %v", err) }
+	rawInner, _ := hex.DecodeString(outerVal.Hex)
+	decoded, _, err := proto.DecodeValue(rawInner, 0, wiregen.Table())
+	if err != nil { t.Fatalf("24/18 内层解码失败(非法marker): %v", err) }
+	if decoded.Class != "feaidppnpch" || len(decoded.Fields) != 10 {
+		t.Fatalf("24/18 结构异常: %s/%d", decoded.Class, len(decoded.Fields))
+	}
+	for i, f := range decoded.Fields {
+		if i == 0 || i == 8 { continue }
+		if f.Val == nil { t.Fatalf("24/18.f%d VAL 为空", i) }
 	}
 }
