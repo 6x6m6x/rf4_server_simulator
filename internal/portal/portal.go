@@ -45,6 +45,7 @@ func New(db *store.DB, resolve func(string) int64, baseURL string) *Server {
 	s.mux.HandleFunc("GET /portal/api/membership", s.membership)
 	s.mux.HandleFunc("POST /portal/api/membership/purchase", s.purchase)
 	// 服务中心：改名/头像，单价 5000 金分（本地补丁）。
+	s.mux.HandleFunc("POST /portal/api/exchange", s.exchangeSilver)
 	s.mux.HandleFunc("GET /portal/api/customize", s.customizeStatus)
 	s.mux.HandleFunc("POST /portal/api/customize/name", s.customizeName)
 	s.mux.HandleFunc("POST /portal/api/customize/avatar", s.customizeAvatar)
@@ -202,4 +203,29 @@ func (s *Server) purchase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, map[string]any{"membership": state.Membership, "balance": state.Balance, "plans": state.Plans, "purchase": purchase})
+}
+
+// exchangeSilver 个人中心：银币兑换金币。
+// 非会员 2000000 银分 → 100 金分；会员 1800000 → 100（倍率 +0.2）。
+func (s *Server) exchangeSilver(w http.ResponseWriter, r *http.Request) {
+	uid, ok := s.identity(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Units     int64  `json:"units"`     // 兑换份数，每份 100 金分
+		RequestID string `json:"requestID"` // 幂等标识（客户端生成）
+	}
+	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&req); err != nil {
+		fail(w, 400, "兑换参数无效")
+		return
+	}
+	result, err := s.db.PortalSilverToGold(r.Context(), uid, req.Units, time.Now().Unix())
+	if err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	write(w, map[string]any{"exchange": result})
 }

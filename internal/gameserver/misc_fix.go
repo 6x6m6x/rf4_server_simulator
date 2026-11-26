@@ -281,21 +281,32 @@ func replyProfile307(ctx *Ctx) ([]byte, bool) {
 
 // chatChannel 表示聊天频道。
 type chatChannel struct {
-	Name    string
-	Region  string
-	Users   int64
-	Private bool
+	Name      string
+	Display   string
+	Region    string
+	Users     int64
+	Private   bool
+	ChannelID uint32
 }
 
 // sessChannel 读取会话当前频道；没有记录时返回默认频道 nav1_03[CN]。
 // 状态值支持 map 形态，便于后续切换频道功能复用。
 func sessChannel(sess *Session) chatChannel {
-	def := chatChannel{Name: "nav1_03", Region: "CN", Users: 1}
+	def := chatChannel{
+		Name:      defaultChatChannelName,
+		Display:   mainChannelDisplay(defaultChatChannelName, defaultChatChannelRegion),
+		Region:    defaultChatChannelRegion,
+		Users:     1,
+		ChannelID: defaultChatChannelID,
+	}
 	if v, ok := sess.GetState("channel"); ok {
 		if m, isMap := v.(map[string]any); isMap {
 			ch := def
 			if s, isStr := m["name"].(string); isStr && s != "" {
 				ch.Name = s
+			}
+			if s, isStr := m["display"].(string); isStr && s != "" {
+				ch.Display = s
 			}
 			if s, isStr := m["region"].(string); isStr && s != "" {
 				ch.Region = s
@@ -305,6 +316,9 @@ func sessChannel(sess *Session) chatChannel {
 			}
 			if b, isBool := m["private"].(bool); isBool {
 				ch.Private = b
+			}
+			if n, isNum := m["channelID"].(uint32); isNum {
+				ch.ChannelID = n
 			}
 			return ch
 		}
@@ -709,29 +723,16 @@ func fishKVElem(key byte, weight uint32, typed bool) []byte {
 func hSocialCurrent(ctx *Ctx) ([]byte, bool) {
 	ch := sessChannel(ctx.Sess)
 	srv := ctx.Sess.Srv
+	info := chatChannelFromSession(ch)
 	srv.mu.Lock()
-	users := int64(0)
-	for _, sess := range srv.sessions {
-		if sess != nil && !sess.Closed() {
-			users++
-		}
+	if registered := srv.chatChannels.get(ch.Name); registered != nil {
+		info = registered
 	}
 	srv.mu.Unlock()
-	if users < 1 {
-		users = 1
-	}
-	obj := wiregen.MustMakeObj("godhiicbgng", map[int]*proto.Value{
-		0: proto.StrVal(ch.Name),
-		1: proto.StrVal("公共频道"),
-		2: proto.StrVal(ch.Region),
-		3: proto.U32(uint32(users)),
-		4: proto.U32(0), // 0=Public
-		5: proto.Bool(false),
-		6: proto.Null(), // 成员列表懒加载
-		7: proto.U32(1),
-		8: proto.Bool(false),
-	})
-	body, err := proto.EncodeValue(obj, ctx.Sess.Table())
+	// 402 的 f3 是**该频道的在线人数**（不是全服在线数）；f4 是频道可见性
+	// （0=Public; 1=Private）。详见 specs/changes/chat-channel-fix/spec.md。
+	users := srv.channelOnlineCount(ch.Name)
+	body, err := proto.EncodeValue(buildChannelObject(info, users), ctx.Sess.Table())
 	if err != nil {
 		return nil, false
 	}
@@ -740,23 +741,51 @@ func hSocialCurrent(ctx *Ctx) ([]byte, bool) {
 
 // hSocialMove 处理 24/1 social/move：客户端在上船、跨水域时上报目标频道名。
 //
-// 只记录会话频道，响应回 null。回完整频道对象 godhiicbgng 时客户端会认为移动
-// 未生效，以约 16ms 间隔持续重发并最终断开连接；回 null 时只发一次。
+// 响应回该频道的 402 频道对象（形状表 social/move → ancileefnje）。此前回
+// null，客户端拿不到频道对象就不更新界面标签 —— 用户表现为"切了频道但界面
+// 不动"、"进了个人频道退不回主频道"。
+//
+// 此前"回 402 会导致客户端以约 16ms 间隔持续重发并断开"的根因是**内容与请求
+// 不匹配**（f1 硬编码"公共频道"、f4 恒 Public、f7 恒 1），而不是"回 402"本身。
+// 现在各字段按请求对齐，内容一致后客户端应能正常收敛。
 func hSocialMove(ctx *Ctx) ([]byte, bool) {
-	name := argFirstStr(ctx.Tree)
+	strs, _ := chatRequestArgs(ctx)
+	name := chatRequestChannelID(strs)
 	ch := sessChannel(ctx.Sess)
 	if name == "" {
 		name = ch.Name
 	}
+	srv := ctx.Sess.Srv
+	srv.mu.Lock()
+	info := srv.chatChannels.get(name)
+	if info == nil {
+		info = srv.chatChannels.ensureMainChannel(name, ch.Region)
+	}
+	if info.Members == nil {
+		info.Members = map[int64]bool{}
+	}
+	info.Members[ctx.Sess.Userid] = true
+	display := chatRequestDisplay(strs)
+	if display != "" && info.Display == "" {
+		info.Display = display
+	}
+	srv.mu.Unlock()
+
+	users := srv.channelOnlineCount(name)
 	ctx.Sess.SetState("channel", map[string]any{
-		"name":    name,
-		"region":  ch.Region,
-		"users":   ch.Users,
-		"private": false,
+		"name":      info.ID,
+		"display":   info.Display,
+		"region":    info.Region,
+		"users":     users,
+		"private":   info.Kind == chatChannelPrivate,
+		"channelID": info.ChannelID,
 	})
-	// 用户补丁：离开频道后回收空私人频道。
-	ctx.Sess.Srv.sweepEmptyPrivateChannels()
-	return []byte{0x00}, true
+	srv.sweepEmptyPrivateChannels()
+	body, err := proto.EncodeValue(buildChannelObject(info, users), ctx.Sess.Table())
+	if err != nil {
+		return nil, false
+	}
+	return body, true
 }
 
 // hSocialPublic 处理 24/10 公聊，命令本身不返回响应。
@@ -773,37 +802,18 @@ func hSocialPublic(ctx *Ctx) ([]byte, bool) {
 		ctx.Log.Info("24/10 GM 指令（Go 未实现，不回显）", "text", msg)
 		return nil, true
 	}
-	ch := sessChannel(ctx.Sess)
 	// 外层 locationId 发空串：客户端 peilhchjenn 对频道名做严格相等校验，
 	// 带 [CN] 或 sessChannel 默认名都不匹配当前标签页而被静默丢弃；空串
 	// 无条件放行（与 pushChatProbe 同一结论，2026-11-04 反编译+对照实证）。
 	loc := ""
-	users := ch.Users
-	if users < 1 {
-		users = 1
-	}
-	// 用户补丁：公聊只广播给同一频道的在线会话，主频道/私人频道互不串聊。
+	// 公聊只广播给**同一频道**的在线会话：主频道之间、主频道与私人频道之间
+	// 都互不串聊。此前广播给全服所有人，导致两个玩家无论在哪个频道都能对话。
 	srv := ctx.Sess.Srv
-	peers := srv.channelPeers(sessChannel(ctx.Sess).Name)
-	if int64(len(peers)) > users {
-		users = int64(len(peers))
-	}
-	// 玩家自定义发言样式：profile.role 作为 401.f0 kind（仅 0/1/2 合法）。
-	// 实测：0=普通；1=id带中括号；2=管理员同款黄（id被客户端掩码成 *****）。
-	// 其它 kind 是钓获播报模板（25=超级稀有鱼0克等），会显示固定文本，故拒绝。
-	// kind=2 用作发布系统消息：不显示真实昵称，文本末尾自动附加 *****。
-	kind := 0
-	if p, err := srv.DB.GetProfile(srv.dbCtx(), int64(ctx.Sess.Userid)); err == nil && p != nil {
-		if p.Role == 1 || p.Role == 2 {
-			kind = int(p.Role)
-		}
-	}
-	outMsg := msg
-	if kind == 2 && srv.tunableF("admin_chat_star_suffix", 1) != 0 {
-		outMsg = formatAdminSystemChat(msg)
-	}
+	channelName := sessChannel(ctx.Sess).Name
+	peers := srv.channelPeers(channelName)
+	users := uint32(srv.channelOnlineCount(channelName))
 	for _, sess := range peers {
-		sess.Push(24, 27, buildChatEchoPushKind(kind, loc, outMsg, uint64(ctx.Sess.Userid), uint32(users)))
+		sess.Push(24, 27, buildChatEchoPush(loc, msg, uint64(ctx.Sess.Userid), users))
 	}
 	return nil, true // fire-and-forget，不返回响应
 }

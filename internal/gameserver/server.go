@@ -51,6 +51,9 @@ type Server struct {
 	sessions map[uint64]*Session // 网关 sid -> 会话
 	byToken  map[string]*Session // 活跃会话（重连接管）
 
+	// chatChannels 聊天频道表：主频道与 24/6 创建的个人频道。
+	chatChannels *chatChannelRegistry
+
 	callMu  sync.Mutex
 	callSeq map[string]uint64 // token -> 已分配的最大推送 call_id
 
@@ -170,6 +173,7 @@ func NewServer(cfg config.Game, log *slog.Logger, obs *metrics.Server) *Server {
 		table:           wiregen.Table(),
 		sessions:        map[uint64]*Session{},
 		byToken:         map[string]*Session{},
+		chatChannels:    newChatChannelRegistry(),
 		callSeq:         map[string]uint64{},
 		fishStates:      map[int64]map[string]*FishState{},
 		heldFishingRods: map[int64]string{},

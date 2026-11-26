@@ -571,14 +571,13 @@ func (s *Server) biteBaitSnapshot(ctx context.Context, rod string) (string, bool
 	if err != nil || row == nil {
 		return "", false
 	}
-	comps := s.storedRigComponents(ctx, rod)
 	var ids []string
-	// 用户补丁：cat58 小药（引诱成分）纳入咬钩快照，使上鱼确认时
-	// consumeHookedBait 能遍历到它并按 baitUseRule 扣 1 份。抛竿快照
-	// consumeCastBait 走整棵组件树，cast=true 分支不扣小药，不会重复。
+	// 用户补丁：cat58 小药（引诱成分）纳入咬钩快照。小药可能挂在**多层**
+	// 中间组件下（如水底钓组→饵料槽→小药），只扫竿的直接组件会漏掉它，
+	// 导致上鱼时永远不扣。这里递归遍历整棵组件树后再按品类收集。
 	for _, category := range []int64{27, 17, 58} {
-		for _, key := range rigCompKeysOfCategory(comps, category) {
-			ids = append(ids, comps[key].GUID)
+		for _, guid := range s.rigComponentGUIDsDeep(ctx, rod, category) {
+			ids = append(ids, guid)
 		}
 	}
 	return strings.Join(ids, " "), true
@@ -634,23 +633,24 @@ func (s *Server) consumeBaitEvent(ctx context.Context, uid int64, rod, event str
 			return out, err
 		}
 		// 换饵后的背包物品和其他钓组不能被旧咬口扣除。
-		if row.RigGUID == "" || row.Container != "rig" || !cast && row.RigGUID != rod {
+		if row.RigGUID == "" || row.Container != "rig" {
 			continue
 		}
-		if cast {
-			owner := row.RigGUID
-			visited := map[string]bool{}
-			for owner != rod && owner != "" && !visited[owner] {
-				visited[owner] = true
-				p, e := getOwnedItemTx(ctx, tx, uid, owner)
-				if e != nil {
-					return out, e
-				}
-				owner = p.RigGUID
+		// 统一向上回溯挂载链：组件可能挂在水底钓组等多层中间节点下，
+		// 其 RigGUID 不是竿本身（如小药 cat58 挂在 feeder 钓组的饵料槽）。
+		// 只要链条最终指向本竿就属于本次咬口，否则是别的钓组。
+		chain := row.RigGUID
+		seenChain := map[string]bool{}
+		for chain != rod && chain != "" && !seenChain[chain] {
+			seenChain[chain] = true
+			par, e := getOwnedItemTx(ctx, tx, uid, chain)
+			if e != nil {
+				return out, e
 			}
-			if owner != rod {
-				continue
-			}
+			chain = par.RigGUID
+		}
+		if chain != rod {
+			continue
 		}
 		def, err := itemDefByNumericIDTx(ctx, tx, row.NumericID)
 		if err != nil {
@@ -1078,4 +1078,55 @@ func (s *Session) prepareBaitForCast(st *FishState, rod string) error {
 		s.pushBaitChange(change)
 	}
 	return err
+}
+
+// rigComponentGUIDsDeep 递归收集某品类在所有层级组件下的 GUID。
+// 组件节点自身也可能带 csRigObject 子组件表（多层钓组），逐层下钻。
+func (s *Server) rigComponentGUIDsDeep(ctx context.Context, root string, category int64) []string {
+	var out []string
+	visited := map[string]bool{}
+	added := map[string]bool{}
+	add := func(g string) {
+		if g != "" && !added[g] {
+			added[g] = true
+			out = append(out, g)
+		}
+	}
+	var walk func(node string)
+	walk = func(node string) {
+		if node == "" || visited[node] {
+			return
+		}
+		visited[node] = true
+		// 组件表有两个来源：竿自身的 f5 组件树（storedRigComponents）与
+		// rig_component 关系表（多层挂载时子组件按 rig_guid 落库）。两者都要读。
+		comps := s.storedRigComponents(ctx, node)
+		for _, key := range rigCompKeysOfCategory(comps, category) {
+			add(comps[key].GUID)
+		}
+		children := make([]string, 0, len(comps))
+		for _, comp := range comps {
+			if comp.GUID != "" {
+				children = append(children, comp.GUID)
+			}
+		}
+		if rows, err := s.DB.ListRigComponents(ctx, node); err == nil {
+			for _, rc := range rows {
+				if rc.GUID == "" {
+					continue
+				}
+				if rc.Slot == category {
+					add(rc.GUID)
+				}
+				children = append(children, rc.GUID)
+			}
+		}
+		for _, child := range children {
+			if !visited[child] {
+				walk(child)
+			}
+		}
+	}
+	walk(root)
+	return out
 }
