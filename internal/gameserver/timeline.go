@@ -113,6 +113,93 @@ const (
 	qualificationTasks    = 3
 )
 
+// qualificationBadgeBase 是 24/18.f4 资格徽章 ID 的分支基准段。
+//
+// 依据官服实包 2026-11-25（call 117/921/136/137，typed_u32arr 311）逐段核对：
+//
+//	分支     实包段（节选）                    说明
+//	1        101/102/106/108                  通用钓鱼（Wobbler/Lure）
+//	2        200/202/209/212/213              Jig 钓组
+//	3        250~257                           传统纺车杆，250=0级基线（已与用户核对）
+//	4        300~311                           通用钓鱼（5/15 种）
+//	5        350/352~357/363                   Bolognese/浮钓
+//	6        400/401                           Feeder/Picker
+//
+// 分支 3 占 250 段后，分支 4~6 相对“分支号×100”各左移一段；分支 7/8 与
+// 限时活动分支 9+ 无实包样本，按 50 间隔外推（7=450、8=500）、活动分支
+// 仍按 branch*100（实包 900/1000 段与之吻合）。客户端拿不到合法段会兜底
+// 渲染成同款徽章并从 1 级往后排——这是此前多枚同款的根因。
+func qualificationBadgeBase(branch int64) int64 {
+	switch branch {
+	case 1:
+		return 100
+	case 2:
+		return 200
+	case 3:
+		return 250 // 传统纺车杆：0级基线 + 实际等级 1..7
+	case 4:
+		return 300
+	case 5:
+		return 350
+	case 6:
+		return 400
+	case 7:
+		return 450
+	case 8:
+		return 500
+	default:
+		return branch * 100 // 限时活动分支 9..20
+	}
+}
+
+// qualificationBadgeIDsByBranch 是 24/18.f4（typed_u32arr type=311）中官服真实
+// 下发过的徽章 ID，按等级从低到高排列。证据：官服实包 2026-11-25 四张卡
+// （call 117/921/136/137）的 f4 并集共 64 个 ID。
+//
+// ★ 不能再用 qualificationBadgeBase+stage 推算 ID：推算出的 107/207/407/457/507
+// 等官服从不下发，客户端查不到 qlfctn_n_<id> 名称，就 fallback 成默认的
+// 「传统纺车杆」并把编号当等级显示——这正是资格页每一项都是同款的根因。
+// 只发白名单内的真实 ID，客户端才能显示出各自的资格名称。
+var qualificationBadgeIDsByBranch = map[int64][]uint32{
+	1:  {101, 102, 106, 108, 151, 152, 153},      // 通用钓鱼
+	2:  {200, 202, 209, 212, 213, 240},           // Jig 钓组
+	3:  {250, 251, 252, 253, 254, 255, 256, 257}, // 传统纺车杆（250=0级基线）
+	4:  {300, 301, 302, 303, 304, 305, 306, 307}, // 通用钓鱼（5/15 种）
+	5:  {350, 352, 353, 354, 355, 356, 357},      // Bolognese/浮钓
+	6:  {400, 401},                               // Feeder/Picker
+	9:  {900, 904, 906, 907, 908, 910},           // 限时活动
+	10: {1000, 1001, 1002},                       // 限时活动
+}
+
+// badgeZeroBase 标记这些分支的白名单首项是 0 级基线，等级 1 应从第二项起。
+func badgeZeroBase(branch int64) bool {
+	return branch == 3 || branch == 4 || branch == 5
+}
+
+// qualificationBadgeID 把资格分支与玩家实际达到的最高阶段映射成官服徽章 ID。
+// 只返回白名单内真实存在的 ID；无官服样本的分支（7/8）返回 0、不下发，
+// 避免非法 ID 触发客户端同款 fallback。等级严格限制在 1..7。
+func qualificationBadgeID(branch, stage int64) uint32 {
+	if stage < 1 {
+		return 0
+	}
+	if stage > qualificationStages {
+		stage = qualificationStages
+	}
+	ids := qualificationBadgeIDsByBranch[branch]
+	if len(ids) == 0 {
+		return 0
+	}
+	idx := stage - 1
+	if badgeZeroBase(branch) {
+		idx++ // 跳过 0 级基线
+	}
+	if idx >= int64(len(ids)) {
+		idx = int64(len(ids)) - 1
+	}
+	return ids[idx]
+}
+
 // qualificationRuleID 返回某条任务的规则类型编号。
 //
 // 该编号同时是客户端本地化键 qlfctn_t_<编号> 的后缀，客户端的任务文案、条件说明
