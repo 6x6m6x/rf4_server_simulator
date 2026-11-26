@@ -575,6 +575,47 @@ func (s *Server) filterFishBaitSet(loc string, ids []string, keys []string, weig
 		if weights[i] <= 0 {
 			continue
 		}
+		// ★挪威海用户爱吃饵优先（补丁）：用户设置过 allow 的鱼，只认用户
+		// 点名的饵，满档权重且跳过严格清单/占比分级/长尾闸/拟饵门；
+		// 用户没点名的饵一律 0 权重，绝不回退内置规则。前置条件保留，
+		// 由 northSeaUserBaitRule 按用户规则自身的 condition 判定。
+		// 其它水域、没设置过用户规则的鱼，下面整条链路不变。
+		if userRule, hasUser, userHit := s.northSeaUserBaitRule(ctx, c, names[key], baits, loc); hasUser {
+			if userHit {
+				rot := baitRotation{}
+				if ov, ok := s.baitOverrides(ctx)[ruleName(names[key])]; ok {
+					rot = ov.rot
+				}
+				activeGroup := activeBaitGroup(rot, now)
+				strictRotation := activeGroup != nil && rot.mode == "strict"
+				best := 0.0
+				preferred := 0
+				for _, b := range baits {
+					if !rotationKeepsBait(activeGroup, strictRotation, b) {
+						continue
+					}
+					if baitBlockedByRule(userRule, c, b) || !baitAllowedByRule(userRule, b, activeGroup) {
+						continue
+					}
+					// 满档且高于内置规则最高档（内置 full ≤1.5，这里基准 1.725）。
+					score := maxBaitPreference
+					if activeGroup != nil {
+						score *= rotationScoreMultiplier(activeGroup, b)
+					}
+					preferred++
+					best = math.Max(best, score)
+				}
+				if best > 0 {
+					if preferred > 1 {
+						best *= 1 + math.Min(0.15, 0.05*float64(preferred-1))
+					}
+					outKeys = append(outKeys, key)
+					outWeights = append(outWeights, weights[i]*best)
+				}
+			}
+			// 用户规则生效时，本鱼只由用户 allow 决定：没命中就不出（continue）。
+			continue
+		}
 		if strictExact {
 			r, ok := lookupStrictFishBaitRule(names[key])
 			if !ok || !ruleConditionAllows(r, c) {

@@ -159,6 +159,36 @@ func (s *Server) applyBiteGates(ctx context.Context, keys []string, wts []float6
 		}
 	}
 
+	// ★挪威海用户爱吃饵优先（补丁）：用户设置过 allow 的鱼，只认用户点名的
+	// 饵；命中则跳过 G1/G-diet 食性硬门，未命中直接剔除。前置规则保留（由
+	// northSeaUserBaitRule 按用户 condition 判定）。G2 水层仍保留。
+	type northSeaUserBaitState struct {
+		has bool
+		hit bool
+	}
+	userBait := map[string]northSeaUserBaitState{}
+	if isNorthSeaBaitLoc(c.loc, statLoc) && len(c.baits) > 0 {
+		var hookBaits []ruleBait
+		for _, id := range c.baits {
+			if b, ok := s.cachedBaitDefinition(ctx, c, id); ok {
+				hookBaits = append(hookBaits, b)
+			}
+		}
+		if len(hookBaits) > 0 && names == nil {
+			if n, ok := s.cachedFishNames(ctx, c); ok {
+				names = n
+			}
+		}
+		for _, key := range keys {
+			if zh, ok := names[key]; ok {
+				_, has, hit := s.northSeaUserBaitRule(ctx, c, zh, hookBaits, statLoc)
+				if has {
+					userBait[key] = northSeaUserBaitState{has: true, hit: hit}
+				}
+			}
+		}
+	}
+
 	outKeys := make([]string, 0, len(keys))
 	outWts := make([]float64, 0, len(wts))
 	for i, key := range keys {
@@ -167,15 +197,23 @@ func (s *Server) applyBiteGates(ctx context.Context, keys []string, wts []float6
 		}
 		p := s.cachedFishEcology(ctx, c, key)
 		diet := fishEcologyJSONMap(p.DietJSON)
-		if baits.lure && diet["lure"] < cfg.lureDietMin {
-			continue
-		}
-		if dietReady {
-			score := s.biteGateDietScore(ctx, key, diet, baits.natural, names, companion, local, c, cfg)
-			if score <= 0 {
+		if st, ok := userBait[key]; ok {
+			// 用户独占：没点到用户指定的饵，这条鱼一律不吃。
+			if !st.hit {
 				continue
 			}
-			wts[i] *= score
+			// 命中用户饵：跳过内置 G1/G-diet 食性门。
+		} else {
+			if baits.lure && diet["lure"] < cfg.lureDietMin {
+				continue
+			}
+			if dietReady {
+				score := s.biteGateDietScore(ctx, key, diet, baits.natural, names, companion, local, c, cfg)
+				if score <= 0 {
+					continue
+				}
+				wts[i] *= score
+			}
 		}
 		w := wts[i]
 		if target < p.LayerMin-biteGateLayerTol || target > p.LayerMax+biteGateLayerTol {
