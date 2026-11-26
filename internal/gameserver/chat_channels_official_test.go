@@ -70,12 +70,12 @@ func TestSocialChatListOfficialFullList(t *testing.T) {
 	}
 }
 
-// 梅利号空军基地必须出现在列表里，且用快照真实参数（GUID / 2251665 / GL）。
+// 预置私人频道（显示名"羊村"）必须出现在列表里，且用快照真实参数（GUID / 2251665 / GL）。
 func TestSocialChatListHasMeiliPrivateChannel(t *testing.T) {
 	srv := newChatTestServer(t)
 	sess := addChatSession(t, srv, 1, 1000001, "nav1_03")
 
-	body, ok := hSocialChatList(miscCtx(sess, 24, 5, proto.Args524(proto.StrVal("梅利"), proto.StrVal("nav19_01"))))
+	body, ok := hSocialChatList(miscCtx(sess, 24, 5, proto.Args524(proto.StrVal("羊村"), proto.StrVal("nav19_01"))))
 	if !ok {
 		t.Fatal("24/5 未处理")
 	}
@@ -85,22 +85,22 @@ func TestSocialChatListHasMeiliPrivateChannel(t *testing.T) {
 		key, name, region, users, kind, number := officialChannelField(t, list.ArgItem(i), i)
 		if key == featuredPrivateGUID {
 			if name != featuredPrivateName || region != "GL" || kind != chatChannelPrivate || number != 2251665 {
-				t.Fatalf("梅利号参数与快照不符: name=%q region=%q kind=%d num=%d", name, region, kind, number)
+				t.Fatalf("羊村参数与快照不符: name=%q region=%q kind=%d num=%d", name, region, kind, number)
 			}
 			if users != 0 {
-				t.Fatalf("梅利号没人时人数应为 0，实得 %d（占位 1 会阻止空频道回收）", users)
+				t.Fatalf("羊村没人时人数应为 0，实得 %d（占位 1 会阻止空频道回收）", users)
 			}
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("搜索「梅利」未命中预置的梅利号空军基地，列表 %d 项", list.ArgCount())
+		t.Fatalf("搜索「羊村」未命中预置私人频道，列表 %d 项", list.ArgCount())
 	}
 }
 
-// 私人频道（梅利号）可经 24/7 join 实际切换加入：回 Private 402，
+// 私人频道（羊村）可经 24/7 join 实际切换加入：回 Private 402，
 // GUID/number 保持快照值，且会话切过去后不是 nav 主频道。
-func TestSocialJoinMeiliPrivateChannel(t *testing.T) {
+func TestSocialJoinVillagePrivateChannel(t *testing.T) {
 	srv := newChatTestServer(t)
 	sess := addChatSession(t, srv, 1, 1000001, "nav1_03")
 

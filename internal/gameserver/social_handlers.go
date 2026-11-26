@@ -1,7 +1,6 @@
 package gameserver
 
 import (
-	"sort"
 	"time"
 	"database/sql"
 	"encoding/json"
@@ -85,26 +84,10 @@ func hSocialUserProfile(ctx *Ctx) ([]byte, bool) {
 	fields[8] = proto.StrVal("")
 	if s := ctx.Sess.Srv; s != nil && s.DB != nil {
 		cctx := ctx.Sess.pushCtx()
-		// f4 资格徽章：官服 typed_u32arr(311) 每种资格只发最高等级的一个ID，
-		// 未获得的资格不下发（官服 hides，不显示灰色剪影）。此前误填成就ID
-		// → 客户端渲染成12个同款「传统纺车竿」+大量无效数据。
-		// RuleID = branch*1000+(stage-1)*100+task；短ID = branch*100+stage。
-		best := map[int64]int64{} // branch -> 最高已完成 stage
-		if states, err := s.DB.QualificationStates(cctx, uid); err == nil {
-			for ruleID, st := range states {
-				if st.CompletedTS <= 0 || ruleID < 1000 || ruleID > 8999 { continue }
-				branch, rem := ruleID/1000, ruleID%1000
-				stage := rem/100 + 1
-				if stage < 1 || stage > qualificationStages { continue }
-				if stage > best[branch] { best[branch] = stage }
-			}
-		}
-		ids := make([]uint32, 0, len(best))
-		for branch, stage := range best {
-			ids = append(ids, uint32(branch*100+stage))
-		}
-		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-		fields[4] = proto.TypedU32Arr("311", ids)
+		// f4：保持空 typed_u32arr(311)，与 nm39 一致。
+		// 填入成就ID/资格短ID都会让客户端成就页出现乱码（实测），
+		// 空数组成就页正常显示；资格页徽章另有来源，这里不下发。
+		fields[4] = proto.TypedU32Arr("311", nil)
 		// f5 奖赏：复用 3/16 的 obj2015 列表。
 		if rows, err := s.playerRewardItems(cctx, uid); err == nil {
 			items := make([]*proto.Value, 0, len(rows))

@@ -280,22 +280,11 @@ func (s *Server) lootBoxTrophyChance() float64 {
 	return p
 }
 
-// lootBoxTrophyChanceForSession 上星鱼开箱概率：欢乐时光进行中提升到 80%，
-// 结束后立即回落到后台配置值（每次掷骰实时读取欢乐时光状态，无缓存）。
-func (s *Server) lootBoxTrophyChanceForSession(sess *Session) float64 {
-	if sess != nil {
-		sess.happyMu.Lock()
-		active := sess.happyStatus.Active
-		sess.happyMu.Unlock()
-		if active {
-			if v := s.tunableF("loot_box_happy_trophy_chance", 0.8); v >= 0 {
-				if v > 1 {
-					return 1
-				}
-				return v
-			}
-		}
-	}
+// lootBoxTrophyChanceForSession 上星鱼开箱概率。
+// 用户补丁：欢乐时光不再影响福袋概率（历史耦合导致实际开箱率偏低）。
+// 统一取后台 loot_box_trophy_chance（默认 0.5），欢乐时光只保留「每日 1 小时」
+// 的经验/鱼口/熟练度加成。
+func (s *Server) lootBoxTrophyChanceForSession(*Session) float64 {
 	return s.lootBoxTrophyChance()
 }
 

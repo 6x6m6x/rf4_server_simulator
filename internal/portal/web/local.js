@@ -2,13 +2,32 @@
 (()=>{
 let token='',profile=null,busy=false,pending=null,epoch=0;
 const $=id=>document.getElementById(id), auth=$('local-auth');
+
+// 统一操作提示框：成功绿色/失败红色，3.2s 自动消失，可点击关闭。
+function toast(msg,ok){
+  let box=document.getElementById('portal-toast');
+  if(!box){
+    box=document.createElement('div');box.id='portal-toast';
+    Object.assign(box.style,{position:'fixed',top:'18px',right:'18px',zIndex:9999,maxWidth:'360px',padding:'12px 16px',borderRadius:'10px',fontSize:'13.5px',lineHeight:'1.6',boxShadow:'0 6px 24px rgba(0,0,0,.28)',transition:'opacity .2s',cursor:'pointer'});
+    box.onclick=()=>box.remove();
+    document.body.appendChild(box);
+  }
+  box.textContent=(ok?'✔ ':'✖ ')+msg;
+  box.style.background=ok?'#16351f':'#3a1a1a';
+  box.style.color=ok?'#8ee6a1':'#ff9d9d';
+  box.style.border='1px solid '+(ok?'#2e6b3f':'#7a2f2f');
+  box.style.opacity='1';
+  clearTimeout(box._t);
+  box._t=setTimeout(()=>{box.style.opacity='0';setTimeout(()=>box.remove(),220);},3200);
+}
+
 const money=n=>Number.isSafeInteger(n)?(n/100).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}):'未知';
 async function api(path,method='GET',data){const headers={};if(token)headers.Authorization='Bearer '+token;if(data!==undefined)headers['Content-Type']='application/json';const response=await fetch('/portal'+path,{method,headers,body:data===undefined?undefined:JSON.stringify(data),cache:'no-store'});const value=await response.json();if(!response.ok){const e=Error(value.error||'请求失败');e.status=response.status;throw e;}return value;}
 function render(p){profile=p;const av=$('customize-avatar-preview');if(av){if(p&&p.avatar){av.src=p.avatar.startsWith('/')?location.origin+p.avatar:p.avatar;av.hidden=false;}else av.hidden=true;}
 $('local-member-login').hidden=!!p;if(p)$('local-member-message').textContent='';$('account_name').textContent=p?p.nickname:'请进入个人中心';$('login_button').textContent=p?'退出':'进入个人中心';const rows=document.querySelectorAll('.user_info .info tbody tr');const values=p?[p.username+' / ID '+p.userId,String(p.level)+(p.stars?' · ★ '+p.stars:''),'未设置',p.region,p.premium?(p.premiumUntil?'至 '+new Date(p.premiumUntil).toLocaleString('zh-CN',{hour12:false}):'长期会员'):'未开通',money(p.goldMinor),money(p.silverMinor)]:['未登录','—','未设置','中国','—','—','—'];rows.forEach((row,i)=>{const b=row.querySelector('b');if(b)b.textContent=values[i];});for(const id of ['local-refresh'])$(id).disabled=!p;if(!p){pending=null;$('local-plans').replaceChildren();$('local-member-message').textContent='请先进入个人中心，登录后会显示金币余额和会员套餐。';}}
 function plans(state){$('local-plans').replaceChildren();for(const plan of state.plans){const card=document.createElement('article');card.className='local-plan';const title=document.createElement('h3');title.textContent=plan.name;const price=document.createElement('p');price.textContent=money(plan.priceGold)+' 金币 · 经验 +100% · 金币消费 7 折 · 兑换汇率 +20%';const button=document.createElement('button');button.className='btn primary sm';button.textContent=state.membership.permanent?'已有永久会员':pending?.planID===plan.id?'重试本次购买':state.membership.active?'购买并续期':'购买会员';button.disabled=busy||state.membership.permanent||state.balance.gold<plan.priceGold||!!pending&&pending.planID!==plan.id;if(state.balance.gold<plan.priceGold)button.textContent='金币不足';button.onclick=()=>buy(plan.id,state);card.append(title,price,button);$('local-plans').append(card);}}
 async function refresh(){if(!token)return;const own=epoch;const [p,m,c]=await Promise.all([api('/api/profile'),api('/api/membership'),api('/api/customize').catch(()=>null)]);if(own!==epoch)return;render(p);plans(m);if(c&&c.priceGold){const yuan=Math.round(c.priceGold/100);const n=$('customize-name-btn'),a=$('customize-avatar-btn');if(n)n.textContent=`改名（${yuan}金币）`;if(a)a.textContent=`换头像（${yuan}金币）`;}return m;}
-async function buy(planID,state){if(!token){requestLogin();return;}if(busy)return;const own=epoch;pending=pending||{planID,requestID:crypto.randomUUID()};if(pending.planID!==planID)return;busy=true;plans(state);$('local-member-message').textContent='正在保存购买…';try{const result=await api('/api/membership/purchase','POST',pending);if(own!==epoch)return;state=result;pending=null;if(profile)render({...profile,premium:result.membership.active,premiumUntil:result.membership.expiresAt?result.membership.expiresAt*1000:null,goldMinor:result.balance.gold,silverMinor:result.balance.silver});try{await refresh();if(own!==epoch)return;$('local-member-message').textContent=result.purchase?.replayed?'购买已处理，未重复扣款。':'购买成功，游戏内会员状态将自动刷新。';}catch(e){if(own!==epoch)return;$('local-member-message').textContent='购买已保存，账户刷新暂不可用；请点“刷新账户”查看，不要重复购买。';}}catch(e){if(own!==epoch)return;if(e.status&&e.status<500)pending=null;$('local-member-message').textContent=e.message+(pending?'；可重试本次购买。':'');}finally{busy=false;if(own===epoch&&token){try{const latest=await api('/api/membership');if(own===epoch)plans(latest);}catch{if(own===epoch&&token)plans(state);}}}}
+async function buy(planID,state){if(!token){requestLogin();return;}if(busy)return;const own=epoch;pending=pending||{planID,requestID:crypto.randomUUID()};if(pending.planID!==planID)return;busy=true;plans(state);$('local-member-message').textContent='正在保存购买…';try{const result=await api('/api/membership/purchase','POST',pending);if(own!==epoch)return;state=result;pending=null;if(profile)render({...profile,premium:result.membership.active,premiumUntil:result.membership.expiresAt?result.membership.expiresAt*1000:null,goldMinor:result.balance.gold,silverMinor:result.balance.silver});try{await refresh();if(own!==epoch)return;$('local-member-message').textContent=result.purchase?.replayed?'购买已处理，未重复扣款。':'购买成功，游戏内会员状态将自动刷新。';toast(result.purchase?.replayed?'购买已处理，未重复扣款。':'会员购买成功',true);}catch(e){if(own!==epoch)return;$('local-member-message').textContent='购买已保存，账户刷新暂不可用；请点“刷新账户”查看，不要重复购买。';}}catch(e){if(own!==epoch)return;if(e.status&&e.status<500)pending=null;$('local-member-message').textContent=e.message+(pending?'；可重试本次购买。':'');toast('购买失败：'+e.message+(pending?'（可重试）':''),false);}finally{busy=false;if(own===epoch&&token){try{const latest=await api('/api/membership');if(own===epoch)plans(latest);}catch{if(own===epoch&&token)plans(state);}}}}
 function requestLogin(){if(token)return;$('local-auth-message').textContent='请先进入个人中心，再购买会员。';$('local-member-message').textContent='请先登录：登录后会显示会员套餐。';if(!auth.open)auth.showModal();}
 $('local-member-login').onclick=requestLogin;
 document.querySelectorAll('#main_menu a[href^="#local-"]').forEach(a=>a.addEventListener('click',e=>{if(!token){e.preventDefault();requestLogin();}}));
@@ -16,8 +35,8 @@ $('local-login').onsubmit=async e=>{e.preventDefault();const form=e.target,butto
 $('login_button').onclick=async()=>{if(!token){requestLogin();return;}try{await api('/api/session','DELETE');token='';epoch++;render(null);}catch(e){$('local-message').textContent=e.message;}};
 $('local-auth-close').onclick=()=>auth.close();$('local-refresh').onclick=()=>refresh().catch(e=>$('local-message').textContent=e.message);
 $('close-banner').onclick=()=>document.getElementById('head_banner').hidden=true;
-$('customize-name-btn').onclick=async()=>{if(!token){requestLogin();return;}const name=$('customize-name').value.trim();if(!name){$('customize-message').textContent='请输入新昵称';return;}if(busy)return;busy=true;$('customize-name-btn').disabled=true;try{const r=await api('/api/customize/name','POST',{name});$('customize-message').textContent='改名成功，花费 '+(profile&&profile.premium?35:50)+' 金币';if(profile)render({...profile,username:r.name,nickname:r.name,goldMinor:r.goldMinor});await refresh();}catch(e){$('customize-message').textContent=e.message;}finally{busy=false;$('customize-name-btn').disabled=false;}};
-$('customize-avatar-btn').onclick=async()=>{if(!token){requestLogin();return;}const f=$('customize-file').files&&$('customize-file').files[0];if(!f){$('customize-message').textContent='请选择图片';return;}if(busy)return;busy=true;$('customize-avatar-btn').disabled=true;try{const fd=new FormData();fd.append('file',f);const response=await fetch('/portal/api/customize/avatar',{method:'POST',headers:{Authorization:'Bearer '+token},body:fd});const r=await response.json();if(!response.ok)throw Error(r.error||'上传失败');$('customize-message').textContent='头像已更新，花费 50 金币';if(profile)render({...profile,avatar:r.avatar,goldMinor:r.goldMinor});await refresh();}catch(e){$('customize-message').textContent=e.message;}finally{busy=false;$('customize-avatar-btn').disabled=false;}};
+$('customize-name-btn').onclick=async()=>{if(!token){requestLogin();return;}const name=$('customize-name').value.trim();if(!name){$('customize-message').textContent='请输入新昵称';return;}if(busy)return;busy=true;$('customize-name-btn').disabled=true;try{const r=await api('/api/customize/name','POST',{name});$('customize-message').textContent='改名成功，花费 '+(profile&&profile.premium?35:50)+' 金币';toast('改名成功，花费 '+(profile&&profile.premium?35:50)+' 金币',true);if(profile)render({...profile,username:r.name,nickname:r.name,goldMinor:r.goldMinor});await refresh();}catch(e){$('customize-message').textContent=e.message;toast('改名失败：'+e.message,false);}finally{busy=false;$('customize-name-btn').disabled=false;}};
+$('customize-avatar-btn').onclick=async()=>{if(!token){requestLogin();return;}const f=$('customize-file').files&&$('customize-file').files[0];if(!f){$('customize-message').textContent='请选择图片';return;}if(busy)return;busy=true;$('customize-avatar-btn').disabled=true;try{const fd=new FormData();fd.append('file',f);const response=await fetch('/portal/api/customize/avatar',{method:'POST',headers:{Authorization:'Bearer '+token},body:fd});const r=await response.json();if(!response.ok)throw Error(r.error||'上传失败');$('customize-message').textContent='头像已更新，花费 '+(profile&&profile.premium?35:50)+' 金币';toast('头像已更新，花费 '+(profile&&profile.premium?35:50)+' 金币',true);if(profile)render({...profile,avatar:r.avatar,goldMinor:r.goldMinor});await refresh();}catch(e){$('customize-message').textContent=e.message;toast('头像更新失败：'+e.message,false);}finally{busy=false;$('customize-avatar-btn').disabled=false;}};
 render(null);
 })();
 // 银币兑换金币：非会员 2000000 银分/100 金分；会员 1800000（倍率 +0.2）。
@@ -31,8 +50,9 @@ $('exchange-btn').onclick=async()=>{
     const r=await api('/api/exchange','POST',{units,requestID:crypto.randomUUID()});
     const ex=r.exchange||{};
     $('exchange-message').textContent=`兑换成功：消耗 ${money(ex.silverSpent)} 银币，获得 ${money(ex.goldGained)} 金币${ex.premium?'（会员汇率）':''}。`;
+    toast(`兑换成功：-${money(ex.silverSpent)} 银币，+${money(ex.goldGained)} 金币${ex.premium?'（会员汇率）':''}`,true);
     if(profile)render({...profile,goldMinor:ex.goldMinor,silverMinor:ex.silverMinor});
     await refresh();
-  }catch(e){$('exchange-message').textContent=e.message;}
-  finally{busy=false;$('exchange-login')&&0;$('exchange-btn').disabled=!token;}
+  }catch(e){$('exchange-message').textContent=e.message;toast('兑换失败：'+e.message,false);}
+  finally{busy=false;$('exchange-btn').disabled=!token;}
 };

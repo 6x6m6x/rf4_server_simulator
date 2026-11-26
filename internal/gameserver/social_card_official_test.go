@@ -47,50 +47,20 @@ func TestSocialUserProfileHasOfficialFields(t *testing.T) {
 }
 
 // 24/18 页签数据：f4 成就ID、f5 奖赏、f6 稀有鱼分组、f7 排名须为官服类型，
-// 不再空占位（用户反馈渔获/稀有鱼/成就页空白）。
-func TestSocialUserProfileTabFields(t *testing.T) {
-	env := newDLineTestEnv(t, 100)
-	registerSocialHandlers(env.srv.dispatch)
-	if _, err := env.db.EnsureProfile(context.Background(), 200); err != nil { t.Fatal(err) }
-	card := decodeWrappedBytes(t, env.invoke(t, 24, 18, proto.Args524(proto.U32(200))))
-	// f4 typed_u32arr(311)、f5~f7 args(code)
-	if f := card.Fields[4].Val; f == nil || f.Kind != proto.KindTypedU32Arr || f.TypeName != "311" {
-		t.Fatalf("24/18.f4 成就类型错: %+v", f)
-	}
-	for _, i := range []int{5, 6, 7} {
-		f := card.Fields[i].Val
-		if f == nil || f.Kind != proto.KindArgs || f.Code == nil {
-			t.Fatalf("24/18.f%d 非 args: %+v", i, f)
-		}
-	}
-	want := map[int]string{5: "185", 6: "132", 7: "207"}
-	for i, code := range want {
-		if got := card.Fields[i].Val.Code; got == nil || *got != code {
-			t.Fatalf("24/18.f%d code=%v 期望 %s", i, got, code)
-		}
-	}
-}
-
-// 资格页：每种资格只发最高等级一个ID，未获得的不发（官服行为）。
-func TestSocialQualificationHighestOnly(t *testing.T) {
+// 24/18.f4 必须为空 typed_u32arr(311)：填任何ID都会让客户端成就页乱码（nm41实测）。
+func TestSocialProfileF4EmptyForAchievements(t *testing.T) {
 	env := newDLineTestEnv(t, 100)
 	registerSocialHandlers(env.srv.dispatch)
 	ctx := context.Background()
 	if _, err := env.db.EnsureProfile(ctx, 200); err != nil { t.Fatal(err) }
-	// branch1 stage1(t1) + stage2(t1/t2) + stage3(t1) 均完成；branch2 stage1 完成；branch3 无。
-	now := float64(1700000000)
-	for _, id := range []int64{1001, 1101, 1102, 1201, 2001} {
-		if err := env.db.UpsertQualificationState(ctx, 200, store.QualificationState{
-			RuleID: id, Counted: []store.QualificationFish{}, CompletedTS: now,
-		}); err != nil { t.Fatal(err) }
-	}
+	// 即使有已完成资格，f4 仍须为空（成就不乱码优先）。
+	if err := env.db.UpsertQualificationState(ctx, 200, store.QualificationState{
+		RuleID: 1001, Counted: []store.QualificationFish{}, CompletedTS: 1700000000,
+	}); err != nil { t.Fatal(err) }
 	card := decodeWrappedBytes(t, env.invoke(t, 24, 18, proto.Args524(proto.U32(200))))
 	f4 := card.Fields[4].Val
-	if f4 == nil || f4.Kind != proto.KindTypedU32Arr { t.Fatalf("f4 非 typed_u32arr: %+v", f4) }
-	got := map[uint32]bool{}
-	for _, it := range f4.Items { got[uint32(it.Num)] = true }
-	// branch1 最高 stage3 → 103；branch2 最高 stage1 → 201；branch3 无 → 不发
-	if len(got) != 2 || !got[103] || !got[201] {
-		t.Fatalf("资格ID应只含 103/201，实际 %v", got)
+	if f4 == nil || f4.Kind != proto.KindTypedU32Arr || f4.TypeName != "311" {
+		t.Fatalf("f4 应为 typed_u32arr(311): %+v", f4)
 	}
+	if len(f4.Items) != 0 { t.Fatalf("f4 必须为空（否则成就页乱码），实际 %d 项", len(f4.Items)) }
 }

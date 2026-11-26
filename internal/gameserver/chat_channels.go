@@ -64,14 +64,17 @@ func loadOfficialChatChannels(log *slog.Logger) []officialChatChannel {
 	return officialChatChannels.list
 }
 
-// 本服只实现快照中的精选频道：2 个主频道 + "梅利号空军基地"私人频道。
+// 本服只实现快照中的精选频道：2 个主频道 + "羊村"私人频道。
 // 其余 18000+ 条只作为数据来源留存，不填充到本服列表。
 //
-// 梅利号是快照里的常驻私人频道：人数按真实在线会话显示，但不会因无人
+// 羊村是快照里的常驻私人频道（沿用官服 GUID，仅改显示名）：人数按真实在线会话显示，但不会因无人
 // 而被回收；本服 24/6 自建频道则在最后一个会话离开时自动删除。
 const (
 	featuredPrivateGUID = "ade934f7-25ca-4f85-93d3-8d6e6c18d7b4"
-	featuredPrivateName = "梅利号空军基地"
+	// officialPrivateName 是官服快照里这条常驻私人频道的原名，用于匹配；
+	// featuredPrivateName 是本服对外显示名（羊村）。
+	officialPrivateName = "梅利号空军基地"
+	featuredPrivateName = "羊村"
 )
 
 // featuredChannels 从快照挑出本服要实现的频道：主频道（f4=0）恒置顶，
@@ -82,8 +85,10 @@ func featuredChannels() (mains []officialChatChannel, private *officialChatChann
 			mains = append(mains, c)
 			continue
 		}
-		if c.Key == featuredPrivateGUID || c.Name == featuredPrivateName {
+		if c.Key == featuredPrivateGUID || c.Name == officialPrivateName || c.Name == featuredPrivateName {
 			cp := c
+			// 显示名统一为本服名（羊村），其余字段沿用快照。
+			cp.Name = featuredPrivateName
 			private = &cp
 		}
 	}
@@ -144,7 +149,7 @@ type chatChannelInfo struct {
 	Kind       uint32 // 402 的 f4
 	ChannelID  uint32 // 402 的 f7
 	Members    map[int64]bool
-	Persistent bool // 快照常驻频道：无人在线也保留（如梅利号）
+	Persistent bool // 快照常驻频道：无人在线也保留（如羊村）
 }
 
 // chatChannelRegistry 是频道表。个人频道由 24/6 create 创建、24/7 join 加入；
@@ -155,7 +160,7 @@ type chatChannelRegistry struct {
 
 func newChatChannelRegistry() *chatChannelRegistry {
 	r := &chatChannelRegistry{channels: map[string]*chatChannelInfo{}}
-	// 把快照里的"梅利号空军基地"预置为本服私人频道：用官服真实 GUID 作 id、
+	// 把快照里的常驻私人频道预置为本服"羊村"：用官服真实 GUID 作 id、
 	// 真实数字 id/region，Kind=Private。这样 24/1 move 与 24/7 join 按 GUID
 	// 命中登记表后即为私人频道，不会被 ensureMainChannel 当成主频道，
 	// 与主频道（nav 前缀）互不冲突。
@@ -298,7 +303,7 @@ func (s *Server) channelPeers(channelID string) []*Session {
 }
 
 // sweepEmptyPrivateChannels 回收无人在线的自建私人频道。
-// 快照精选的常驻频道（Persistent）保留，否则梅利号会在没人时被删掉，
+// 快照精选的常驻频道（Persistent）保留，否则"羊村"会在没人时被删掉，
 // 之后就再也加入不了。会话断开、切频道后调用。
 func (s *Server) sweepEmptyPrivateChannels() {
 	if s == nil || s.chatChannels == nil {
@@ -395,7 +400,7 @@ func hSocialChatList(ctx *Ctx) ([]byte, bool) {
 		items = append(items, buildOfficialChannelObject(c, online))
 	}
 
-	// 私人频道（含预置的"梅利号空军基地"与本服 24/6 创建的频道）。
+	// 私人频道（含预置的"羊村"与本服 24/6 创建的频道）。
 	if ctx.Sess != nil && ctx.Sess.Srv != nil {
 		for _, info := range ctx.Sess.Srv.chatChannels.list() {
 			if info == nil || info.Kind != chatChannelPrivate {
