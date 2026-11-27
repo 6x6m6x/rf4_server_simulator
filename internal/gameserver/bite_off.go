@@ -296,9 +296,10 @@ func (s *Server) biteOffLeader(ctx *Ctx, st *FishState, fish *RolledFish, leader
 	if len(syncGUIDs) > 0 {
 		ctx.Sess.Push4_22ItemGUIDs(syncGUIDs)
 	}
-	ctx.Sess.pushSystemChat(fmt.Sprintf("牙齿咬断了%s，鱼跑了", map[string]string{
+	// 咬断线组与断竿/断线同属公屏跑鱼播报：只推自己会让其他玩家看不到。
+	s.broadcastChatProbeIncludingSelf(ctx.Sess, uint64(ctx.Sess.Userid), 27, 0, fmt.Sprintf("牙齿咬断了%s，鱼跑了", map[string]string{
 		"leader": "引线", "line": "主线",
-	}[part]))
+	}[part]), nil)
 	if s.log != nil {
 		s.log.Info("咬断线组", "rod", shortGUID(rodGUID), "fish", fish.Species,
 			"weight_g", fish.WeightG, "part", part, "leader_kg", roundTo(leaderKg, 2))

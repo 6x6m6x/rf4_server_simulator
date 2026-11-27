@@ -3763,8 +3763,10 @@ func (s *Server) notifyFishEscape(sess *Session, f *RolledFish, reason string) {
 	if kind, ok := escapeTemplateKind[reason]; ok {
 		officialKind = kind
 	}
+	// 跑鱼/断竿/断线是公屏播报（与上鱼播报同一语义）：只推自己会让别人看不到。
+	// 用 IncludingSelf 保证本人恰好一条，其他人各一条。
 	if f == nil || s.tunableF("fish_escape_taunt", 1) == 0 {
-		sess.pushChatProbe(27, officialKind, "", nil)
+		s.broadcastChatProbeIncludingSelf(sess, uint64(sess.Userid), 27, officialKind, "", nil)
 		return
 	}
 	weight := int64(0)
@@ -3789,7 +3791,7 @@ func (s *Server) notifyFishEscape(sess *Session, f *RolledFish, reason string) {
 	// 服务端无法把重量插到句子中间。想让重量紧跟鱼名，只能把鱼名放到句尾：
 	//   "这都能跑！你的 稀有 丁鱵" + 客户端追加 " 1.5 千克"
 	text := "你的 " + tier + name + "，跑掉了，" + taunt + "！"
-	sess.pushChatProbe(27, 3, "", fishTVKv(text, weight))
+	s.broadcastChatProbeIncludingSelf(sess, uint64(sess.Userid), 27, 3, "", fishTVKv(text, weight))
 }
 
 // bumpFishingCounter 增加玩家钓鱼计数器（escapes 等），幂等累加。

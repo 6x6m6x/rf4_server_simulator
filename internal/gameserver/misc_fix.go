@@ -320,9 +320,13 @@ func sessChannel(sess *Session) chatChannel {
 			if n, isNum := m["channelID"].(uint32); isNum {
 				ch.ChannelID = n
 			}
+			// 主频道 id 归一化：客户端列表用快照 nav19_01[CN]，历史默认是
+			// nav1_03；同一逻辑频道必须落到同一个 key，否则公聊会互相收不到。
+			ch.Name = normalizeChatChannelName(ch.Name)
 			return ch
 		}
 	}
+	def.Name = normalizeChatChannelName(def.Name)
 	return def
 }
 

@@ -141,6 +141,30 @@ const (
 	defaultChatChannelID     = uint32(1)
 )
 
+// normalizeChatChannelName 把同一逻辑主频道的不同 id 形态归一成快照口径。
+//
+// 客户端的 24/5 频道列表来自官服快照，主频道 key 是 nav19_01[CN] / nav19_01[GL]；
+// 而会话在玩家从未切过频道时走历史默认名 nav1_03。若不归一，channelPeers 的
+// 精确字符串匹配会把「同在中国频道」的玩家拆成两组，公聊互相收不到——这正是
+// 「发消息别人看不到、公屏渔获却能看到」的根因（渔获走全服广播，不看频道）。
+//
+//	nav1_03 / nav1_03[CN] / nav19_01 / nav19_01[CN] → nav19_01[CN]
+const cnMainChannelName = "nav19_01[CN]"
+
+func normalizeChatChannelName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return cnMainChannelName
+	}
+	if strings.HasPrefix(name, "nav19_01[") {
+		return name
+	}
+	if name == "nav19_01" || name == "nav1_03" || strings.HasPrefix(name, "nav1_03[") {
+		return cnMainChannelName
+	}
+	return name
+}
+
 // chatChannelInfo 是服务端登记的频道（主频道与个人频道共用一张表）。
 type chatChannelInfo struct {
 	ID         string // 频道 id（裸名，如 "nav1_03"）
@@ -288,6 +312,9 @@ func (s *Server) channelPeers(channelID string) []*Session {
 	if s == nil {
 		return nil
 	}
+	// 频道 id 归一化：nav1_03 与 nav19_01[CN] 是同一个中国频道，
+	// 不做归一会让同频道玩家互相收不到公聊。
+	channelID = normalizeChatChannelName(channelID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]*Session, 0, 8)
@@ -295,7 +322,7 @@ func (s *Server) channelPeers(channelID string) []*Session {
 		if sess == nil || sess.Closed() {
 			continue
 		}
-		if sessChannel(sess).Name == channelID {
+		if normalizeChatChannelName(sessChannel(sess).Name) == channelID {
 			out = append(out, sess)
 		}
 	}
@@ -391,13 +418,14 @@ func hSocialChatList(ctx *Ctx) ([]byte, bool) {
 	mains, _ := featuredChannels()
 	items := make([]*proto.Value, 0, 16)
 
-	// 主频道人数用本服真实在线会话数，不照搬官服快照的在线数。
-	var online uint32
-	if ctx.Sess != nil && ctx.Sess.Srv != nil {
-		online = uint32(ctx.Sess.Srv.SessionCount())
-	}
+	// 主频道人数必须按「该频道自己的在线会话」统计：原先统一填全服在线总数，
+	// 会让每个主频道都显示同样的数字，与玩家实际所在频道人数不匹配。
 	for _, c := range mains {
-		items = append(items, buildOfficialChannelObject(c, online))
+		var users uint32
+		if ctx.Sess != nil && ctx.Sess.Srv != nil {
+			users = uint32(ctx.Sess.Srv.channelOnlineCount(c.Key))
+		}
+		items = append(items, buildOfficialChannelObject(c, users))
 	}
 
 	// 私人频道（含预置的"羊村"与本服 24/6 创建的频道）。

@@ -60,9 +60,14 @@ func TestSocialChatListOfficialFullList(t *testing.T) {
 	if !strings.Contains(key0, "["+region0+"]") || name0 == "" {
 		t.Fatalf("主频道 f0/f1/f2 形状不对: key=%q name=%q region=%q", key0, name0, region0)
 	}
-	// 主频道人数是本服在线会话数（3），不是快照官服在线数。
-	if users0 != 3 || users1 != 3 {
-		t.Fatalf("主频道人数应为本服在线 3，实得 %d/%d", users0, users1)
+	// 主频道人数按各自频道真实在线统计：nav1_03 归一化到中国频道（2 人），
+	// 另一主频道无人（0 人）。不再用全服在线总数冒充每个频道的人数。
+	cnUsers, glUsers := users1, users0
+	if region0 == "CN" {
+		cnUsers, glUsers = users0, users1
+	}
+	if cnUsers != 2 || glUsers != 0 {
+		t.Fatalf("主频道人数应按频道统计（中国频道 2 / 国际频道 0），实得 CN=%d GL=%d（region0=%s）", cnUsers, glUsers, region0)
 	}
 	// 快照其余 18000+ 频道不得填充。
 	if strings.Contains(string(body), "ZeroTem") || strings.Contains(string(body), "0000ba77") {

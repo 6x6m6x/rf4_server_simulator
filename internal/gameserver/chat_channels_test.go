@@ -259,7 +259,50 @@ func TestSocialMoveReturnsChannelObject(t *testing.T) {
 	if got := fieldStr(f2[0]); got != "nav1_03" {
 		t.Fatalf("退回后 402.f0 应为主频道 id，实得 %q", got)
 	}
-	if ch := sessChannel(sess); ch.Name != "nav1_03" || ch.Private {
-		t.Fatalf("退回后应回到公共主频道，实得 %#v", ch)
+	// 主频道 id 归一化后统一为快照口径 nav19_01[CN]，不再是历史默认名 nav1_03。
+	if ch := sessChannel(sess); ch.Name != "nav19_01[CN]" || ch.Private {
+		t.Fatalf("退回后应回到公共主频道（归一化 nav19_01[CN]），实得 %#v", ch)
+	}
+}
+
+// 公聊「别人看不到」回归：同一中国频道存在两种 id 形态——客户端列表给的快照
+// nav19_01[CN]，与从未切频道玩家的历史默认 nav1_03。channelPeers 必须把它们
+// 归为同一频道，否则同频道玩家互相收不到发言（鱼获走全服广播所以不受影响）。
+func TestChannelPeersNormalizesMainChannelIDForms(t *testing.T) {
+	srv := newChatTestServer(t)
+	addChatSession(t, srv, 1, 1000001, "nav1_03")
+	addChatSession(t, srv, 2, 1000002, "nav19_01[CN]")
+	addChatSession(t, srv, 3, 1000003, "nav19_01[GL]")
+
+	if n := len(srv.channelPeers("nav1_03")); n != 2 {
+		t.Fatalf("nav1_03 与 nav19_01[CN] 应视为同一中国频道，实得 %d", n)
+	}
+	if n := len(srv.channelPeers("nav19_01[CN]")); n != 2 {
+		t.Fatalf("按快照 id 查询也应命中同一中国频道，实得 %d", n)
+	}
+	if n := srv.channelOnlineCount("nav19_01[CN]"); n != 2 {
+		t.Fatalf("中国频道人数应为 2，实得 %d", n)
+	}
+	if n := len(srv.channelPeers("nav19_01[GL]")); n != 1 {
+		t.Fatalf("国际频道应独立统计，实得 %d", n)
+	}
+}
+
+// 主频道 id 归一化规则：所有「中国频道」的形态都收敛到快照 nav19_01[CN]。
+func TestNormalizeChatChannelName(t *testing.T) {
+	cases := map[string]string{
+		"":              "nav19_01[CN]",
+		"nav1_03":       "nav19_01[CN]",
+		"nav1_03[CN]":   "nav19_01[CN]",
+		"nav19_01":      "nav19_01[CN]",
+		"nav19_01[CN]":  "nav19_01[CN]",
+		"nav19_01[GL]":  "nav19_01[GL]",
+		"nav12_02":      "nav12_02",
+		"ade934f7-25ca-4f85-93d3-8d6e6c18d7b4": "ade934f7-25ca-4f85-93d3-8d6e6c18d7b4",
+	}
+	for in, want := range cases {
+		if got := normalizeChatChannelName(in); got != want {
+			t.Fatalf("normalize(%q) = %q; want %q", in, got, want)
+		}
 	}
 }
