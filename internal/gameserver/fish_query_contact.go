@@ -45,7 +45,7 @@ func hSocialMembers(ctx *Ctx) ([]byte, bool) {
 	return encodeSocialTree(ctx, proto.U32Arr(ids))
 }
 
-const fishQueryHelp = "发送：鱼名 [地图]\n例如：河鲈；河鲈 下通古斯卡河。\n鱼名支持拼音前缀，如“圆腹”或“yuanfu”；多种匹配直接取第一种。\n默认当前地图，按路亚、手杆、底钓分组推荐，每组最多三条方案（区域、鱼饵和钓法）。仅支持已核对坐标的地图；按当前条件估算理论条/小时，不含客户端等待、非实际鱼获。\n查询一般很快；复杂地图请预留约3秒，结果通过个人消息返回。\n\n" +
+const fishQueryHelp = "发送：鱼名 [地图]\n例如：河鲈；河鲈 下通古斯卡河。\n鱼名支持拼音前缀，如“圆腹”或“yuanfu”；多种匹配直接取第一种。\n默认当前地图，按路亚、手杆、底钓分组列出钓法与理论速率；饵只播报管理后台「鱼饵偏好」里为该鱼设置的喜爱饵，不播报内置推荐饵、也不播报钓点位置。该鱼未设置喜爱饵时会明确提示。\n仅支持已核对坐标的地图；按当前条件估算理论条/小时，不含客户端等待、非实际鱼获。\n查询一般很快；复杂地图请预留约3秒，结果通过个人消息返回。\n\n" +
 	"计算说明：单竿、单饵无窝料，先粗筛区域再配饵，不保证全图最优。区域估算不逐点计算水深、底质和水流。\n" +
 	"水陆说明：有本图数据时做中心与四角五点粗筛，任一点有水即保留；混合格可能含陆地，不保证可达。缺少本图数据时未排除陆地。\n" +
 	"理论速率不含客户端等待、占竿、搏鱼、收鱼、重抛及落水就位保护，不是实际鱼获或未来一小时预测。"
@@ -126,17 +126,30 @@ func (s *Server) fishQueryReply(ctx context.Context, sess *Session, text string)
 		}
 		return "暂时无法查询，请确认地图和鱼种后重试。"
 	}
-	return formatFishQueryReply(s.speciesZhName(ctx, req.Fish), result)
+	// 查鱼助手播报的饵只读后台「鱼饵偏好」里用户设置的喜爱饵（allow），
+	// 不读内置推荐，也绝不回退到内置规则。
+	fishZh := s.speciesZhName(ctx, req.Fish)
+	var favoriteBaits []string
+	if ov, ok := s.baitOverrides(ctx)[ruleName(fishZh)]; ok {
+		favoriteBaits = ov.rule.allow
+	}
+	return formatFishQueryReply(fishZh, result, favoriteBaits)
 }
 
-func formatFishQueryReply(fishName string, result *FishQueryResponse) string {
+// formatFishQueryReply 查鱼助手播报：
+//   - 饵信息只读后台用户设置的喜爱饵 favoriteBaits，绝不播报内置推荐饵；
+//   - 不播报任何钓点（区域/落点/声呐区/米钓点/攻略参考点一律不输出）；
+//   - 保留钓法分组与理论速率。
+func formatFishQueryReply(fishName string, result *FishQueryResponse, favoriteBaits []string) string {
 	fishName = fishQueryName(fishName)
 	if len(result.Plans) == 0 {
 		return fishName + "\n当前地图、当前条件没有可行方案，可指定其他地图。"
 	}
+	if len(favoriteBaits) == 0 {
+		return fishName + "\n该鱼未设置喜爱饵（请在管理后台「鱼饵偏好」里设置爱吃饵）。"
+	}
 	lines := []string{result.Plans[0].MapName + " · " + fishName}
-	reference := ""
-	uniform := false
+	lines = append(lines, "喜爱饵："+strings.Join(favoriteBaits, "、"))
 	missingFamily := false
 	for _, family := range fishQueryFamilyRenderOrder {
 		plans := make([]FishQueryPlan, 0, fishQueryPlansPerFamily)
@@ -162,35 +175,8 @@ func formatFishQueryReply(fishName string, result *FishQueryResponse) string {
 			} else if plan.Action == "jig" {
 				method += "·阶梯"
 			}
-			bait := plan.BaitName
-			if plan.EquivalentBaits > 1 {
-				bait = fmt.Sprintf("%s（同效饵 %d 个）", bait, plan.EquivalentBaits)
-			}
-			lines = append(lines, fmt.Sprintf("%d. %s · %s · 理论 %.2f条/小时", i+1, bait, method, plan.TheoreticalPerHour))
-			if plan.Region != nil {
-				lines = append(lines, "   "+formatFishQueryRegion(*plan.Region))
-			} else if plan.X != nil && plan.Z != nil {
-				point := fmt.Sprintf("   世界落点 X %.1f / Z %.1f", *plan.X, *plan.Z)
-				if sonarChartLevel(plan.Map) {
-					if spot := seaGuideSpotForPoint(*plan.X, *plan.Z); spot > 0 {
-						point += fmt.Sprintf("（%d米钓点）", spot)
-					}
-				}
-				if plan.Zone > 0 {
-					point += fmt.Sprintf("（声呐区%d）", plan.Zone)
-				}
-				lines = append(lines, point)
-			} else if reference == "" && len(plan.References) > 0 {
-				reference = plan.References[0].Coordinate
-			}
-			uniform = uniform || plan.CoordinateKind == "region_uniform"
+			lines = append(lines, fmt.Sprintf("%d. %s · 理论 %.2f条/小时", i+1, method, plan.TheoreticalPerHour))
 		}
-	}
-	if reference != "" {
-		lines = append(lines, "攻略参考点："+reference+"（未参与概率计算）")
-	}
-	if uniform {
-		lines = append(lines, "鱼群分布未开启，不推荐区域。")
 	}
 	if missingFamily {
 		lines = append(lines, "仅列出当前条件下有可行方案的钓法。")

@@ -384,6 +384,7 @@ func TestFishQueryVerifiedMapQueries(t *testing.T) {
 	} {
 		t.Run(mapKey, func(t *testing.T) {
 			s, db := seedBaitWeightTest(t)
+			seedFishQueryFavorite(t, s, db, "常见拟鲤")
 			const uid int64 = 1000001
 			if _, err := db.EnsureProfile(t.Context(), uid); err != nil {
 				t.Fatal(err)
@@ -410,7 +411,7 @@ func TestFishQueryVerifiedMapQueries(t *testing.T) {
 				}
 				for _, query := range []string{"常见拟鲤 " + mapKey, "常见拟鲤"} {
 					reply := s.fishQueryReply(t.Context(), &Session{Srv: s, Userid: uid}, query)
-					if strings.Contains(reply, "不支持") || !strings.Contains(reply, "区域 ") {
+					if strings.Contains(reply, "不支持") || !strings.Contains(reply, "喜爱饵：") || strings.Contains(reply, "区域 ") {
 						t.Fatalf("islands query=%s reply=%s", query, reply)
 					}
 				}
@@ -543,9 +544,10 @@ func TestFishQueryLadogaIslandsCoordinates(t *testing.T) {
 func TestFishQueryReplyRegionRange(t *testing.T) {
 	result := &FishQueryResponse{Plans: []FishQueryPlan{{MapName: "下通古斯卡河", BaitName: "蚯蚓", RigName: rigNameForType(1), Chance: .183, TheoreticalPerHour: 65.88,
 		RigType: 1, CoordinateKind: "inland_region", Region: &FishQueryRegion{MinX: 80, MinZ: 96, MaxX: 88, MaxZ: 104}}}}
-	reply := formatFishQueryReply("河鲈", result)
-	if !strings.Contains(reply, "80:96～88:104（上限不含）") || !strings.Contains(reply, "蚯蚓 · 浮钓 · 理论 65.88条/小时") || !strings.Contains(reply, "理论速率不计搏鱼、收鱼时间。") || strings.Contains(reply, "世界落点") || strings.Contains(reply, "攻略") {
-		t.Fatalf("region reply=%s", reply)
+	reply := formatFishQueryReply("河鲈", result, []string{"红虫"})
+	if !strings.Contains(reply, "喜爱饵：红虫") || !strings.Contains(reply, "浮钓 · 理论 65.88条/小时") || !strings.Contains(reply, "理论速率不计搏鱼、收鱼时间。") ||
+		strings.Contains(reply, "80:96") || strings.Contains(reply, "世界落点") || strings.Contains(reply, "攻略") || strings.Contains(reply, "蚯蚓") {
+		t.Fatalf("region must not be shown, only favorite bait: %s", reply)
 	}
 }
 

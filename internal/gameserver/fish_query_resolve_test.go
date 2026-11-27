@@ -52,6 +52,7 @@ func TestFishQuerySpeciesPinyinPrefix(t *testing.T) {
 
 func TestFishQueryPinyinReply(t *testing.T) {
 	s, db := seedBaitWeightTest(t)
+	seedFishQueryFavorite(t, s, db, "常见拟鲤")
 	const uid int64 = 1000001
 	const mapKey = "level_015_tunguska"
 	if _, err := db.SQL.Exec(`UPDATE loc_alias SET alias=? WHERE alias='level_900_rules'`, mapKey); err != nil {
@@ -68,7 +69,7 @@ func TestFishQueryPinyinReply(t *testing.T) {
 	for _, input := range []string{"常见", "changjian", "常见 rules-test", "CHANGJIAN " + mapKey} {
 		t.Run(input, func(t *testing.T) {
 			got := s.fishQueryReply(t.Context(), sess, input)
-			if !strings.HasPrefix(got, "rules-test · 常见拟鲤\n【") || !strings.Contains(got, "\n1. ") {
+			if !strings.HasPrefix(got, "rules-test · 常见拟鲤\n喜爱饵：") || !strings.Contains(got, "\n【") || !strings.Contains(got, "\n1. ") {
 				t.Fatalf("prefix query did not return the full fish name: %q", got)
 			}
 		})

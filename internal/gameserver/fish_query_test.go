@@ -82,6 +82,7 @@ func TestFishQueryCaptureUsesWeightsAndBiteGate(t *testing.T) {
 func TestFishQueryReadOnlyAndCatalog(t *testing.T) {
 	t.Setenv("GODEBUG", "randseednop=0")
 	s, db := seedBaitWeightTest(t)
+	seedFishQueryFavorite(t, s, db, "常见拟鲤")
 	const uid int64 = 1000001
 	const mapKey = "level_015_tunguska"
 	if _, err := db.SQL.Exec(`UPDATE loc_alias SET alias=? WHERE alias='level_900_rules'`, mapKey); err != nil {
@@ -129,7 +130,7 @@ func TestFishQueryReadOnlyAndCatalog(t *testing.T) {
 	if _, err := s.resolveFishQuerySpecies(t.Context(), "%"); err == nil {
 		t.Fatal("punctuation matched a fish")
 	}
-	if reply := s.fishQueryReply(t.Context(), &Session{Srv: s, Userid: uid}, "常见拟鲤 "+mapKey); !strings.Contains(reply, "rules-test") || !strings.Contains(reply, "鱼群分布未开启") || strings.Contains(reply, "67:57") {
+	if reply := s.fishQueryReply(t.Context(), &Session{Srv: s, Userid: uid}, "常见拟鲤 "+mapKey); !strings.Contains(reply, "rules-test") || !strings.Contains(reply, "喜爱饵：") || strings.Contains(reply, "67:57") || strings.Contains(reply, "区域") {
 		t.Fatalf("reply=%s", reply)
 	}
 	req.Map = ""
@@ -201,6 +202,7 @@ func TestFishQueryPlanFamilies(t *testing.T) {
 
 func TestFishQueryReplyKeepsFamiliesBeforeGlobalLimit(t *testing.T) {
 	s, db := seedBaitWeightTest(t)
+	seedFishQueryFavorite(t, s, db, "常见拟鲤")
 	const uid int64 = 1000001
 	const mapKey = "level_015_tunguska"
 	if _, err := db.SQL.Exec(`UPDATE loc_alias SET alias=? WHERE alias='level_900_rules'`, mapKey); err != nil {

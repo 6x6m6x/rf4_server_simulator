@@ -263,7 +263,7 @@ func TestFishQueryWaterIntegration(t *testing.T) {
 	if len(result.Plans) == 0 {
 		t.Fatal("no query plans")
 	}
-	reply := formatFishQueryReply("常见拟鲤", result)
+	reply := formatFishQueryReply("常见拟鲤", result, nil)
 	if mode == "missing_map" {
 		if result.WaterFiltered || result.Regions != len(g.areas) || !strings.Contains(strings.Join(result.Notes, "\n"), "缺少本图水陆数据") {
 			t.Fatalf("missing map misrepresented: %+v %s", result, reply)
