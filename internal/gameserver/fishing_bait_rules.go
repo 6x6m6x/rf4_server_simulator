@@ -575,12 +575,12 @@ func (s *Server) filterFishBaitSet(loc string, ids []string, keys []string, weig
 		if weights[i] <= 0 {
 			continue
 		}
-		// ★挪威海用户爱吃饵优先（补丁）：用户设置过 allow 的鱼，只认用户
+		// ★用户爱吃饵优先（补丁，全水域）：用户设置过 allow 的鱼，只认用户
 		// 点名的饵，满档权重且跳过严格清单/占比分级/长尾闸/拟饵门；
 		// 用户没点名的饵一律 0 权重，绝不回退内置规则。前置条件保留，
-		// 由 northSeaUserBaitRule 按用户规则自身的 condition 判定。
-		// 其它水域、没设置过用户规则的鱼，下面整条链路不变。
-		if userRule, hasUser, userHit := s.northSeaUserBaitRule(ctx, c, names[key], baits, loc); hasUser {
+		// 由 userBaitRuleForFish 按用户规则自身的 condition 判定。
+		// 用户未设置过的鱼，下面整条内置链路不变。
+		if userRule, hasUser, userHit := s.userBaitRuleForFish(ctx, c, names[key], baits, now); hasUser {
 			if userHit {
 				rot := baitRotation{}
 				if ov, ok := s.baitOverrides(ctx)[ruleName(names[key])]; ok {

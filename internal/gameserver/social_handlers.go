@@ -4,7 +4,6 @@ import (
 	"sort"
 	"time"
 	"database/sql"
-	"encoding/json"
 
 	"rf4server/internal/proto"
 	"rf4server/internal/store"
@@ -355,24 +354,13 @@ func hSocialAbsoluteRecords(ctx *Ctx) ([]byte, bool) {
 		}
 		return def
 	}
-	payload := struct {
-		Success  bool              `json:"success"`
-		ID       string            `json:"id"`
-		Type     string            `json:"type"`
-		Locale   string            `json:"locale"`
-		Region   string            `json:"region"`
-		Modified int64             `json:"modified"`
-		Records  []json.RawMessage `json:"records"`
-	}{
-		Success: true, ID: pick(0, "absolute"), Type: pick(1, "DEF"),
-		Locale: pick(2, "zh-CN"), Region: "GL", Records: []json.RawMessage{},
+	var srv *Server
+	if ctx.Sess != nil {
+		srv = ctx.Sess.Srv
 	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		ctx.Log.Error("24/21 JSON 编码失败", "err", err)
-		return []byte{0x00}, true
-	}
-	return encodeSocialTree(ctx, proto.BytesOf(raw))
+	raw := srv.buildAbsoluteRecordsPayload(
+		pick(0, "absolute"), pick(1, "DEF"), pick(2, "zh-CN"), leaderboardRegionCode(ctx))
+	return encodeLeaderboardJSON(ctx, raw)
 }
 
 func hSocialRecordFish(ctx *Ctx) ([]byte, bool) {
@@ -419,18 +407,12 @@ func hSocialRecordFish(ctx *Ctx) ([]byte, bool) {
 
 func hSocialNamedFish(ctx *Ctx) ([]byte, bool) {
 	key := argFirstStr(ctx.Tree)
-	payload := struct {
-		Success   bool              `json:"success"`
-		Modified  int64             `json:"modified"`
-		PlaceID   string            `json:"placeid"`
-		NamedFish []json.RawMessage `json:"namedfish"`
-	}{Success: true, PlaceID: key, NamedFish: []json.RawMessage{}}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		ctx.Log.Error("24/24 JSON 编码失败", "err", err)
-		return []byte{0x00}, true
+	var srv *Server
+	if ctx.Sess != nil {
+		srv = ctx.Sess.Srv
 	}
-	return encodeSocialTree(ctx, proto.BytesOf(raw))
+	raw := srv.buildNamedFishPayload(key)
+	return encodeLeaderboardJSON(ctx, raw)
 }
 
 func maxInt64(a, b int64) int64 {

@@ -8,9 +8,9 @@ import (
 	"rf4server/internal/store"
 )
 
-// 挪威海：用户点名的饵即便不在严格清单里，也必须按用户设置给满权重；
-// 用户没点名的饵（哪怕在内置清单里）一律不吃；其它水域不启用本补丁。
-func TestNorthSeaUserBaitBeatsStrictBuiltin(t *testing.T) {
+// 全水域：用户点名的饵即便不在严格清单里，也必须按用户设置给满权重；
+// 用户没点名的饵（哪怕在内置清单里）一律不吃。
+func TestUserBaitBeatsStrictBuiltinAllLocs(t *testing.T) {
 	s, db := seedBaitRuleTest(t)
 	ctx := context.Background()
 	if err := db.SaveFishBaitOverride(ctx, store.FishBaitOverride{
@@ -31,8 +31,9 @@ func TestNorthSeaUserBaitBeatsStrictBuiltin(t *testing.T) {
 	if len(keys) != 1 || w[0] < maxBaitPreference {
 		t.Fatalf("挪威海用户饵应压过严格清单并给满权重: keys=%v w=%v", keys, w)
 	}
-	if keys2, _ := call("level_900_rules", nil, "rule_other"); len(keys2) != 0 {
-		t.Fatalf("非挪威海不应启用用户优先: %v", keys2)
+	// 其它水域同样启用用户饵权（本轮扩展到全水域）。
+	if keys2, w2 := call("level_900_rules", nil, "rule_other"); len(keys2) != 1 || w2[0] < maxBaitPreference {
+		t.Fatalf("其它水域也应启用用户饵权: keys=%v w=%v", keys2, w2)
 	}
 	// 用户没指定的饵一律不吃（蚯蚓虽在内置严格清单里，也必须被挡）。
 	if keys3, _ := call("level_012_north_sea", nil, "rule_worm"); len(keys3) != 0 {
