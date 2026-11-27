@@ -102,12 +102,10 @@ export default async function rules() {
     }),
     section({ title: '其他', body: h('div', {},
       OTHER.map(([k, l, d, def]) => form.row({ key: k, label: l, help: d, kind: 'bool', def }, val(k, def))),
-      form.row({ key: 'hook_spawn_match_strength', label: '鱼钩大小影响出鱼', help: '0 表示不影响；1 表示大钩更容易钓到大鱼、小钩更容易钓到小鱼；2 更明显。选「按比例出鱼」时不起作用。', kind: 'float', min: 0, max: 2, def: '0' }, val('hook_spawn_match_strength', '0'))) })),
-    section({
-      title: '鱼会咬断线组', desc: '掠食鱼在搏鱼时咬断引线，和「张力超过承力」的常规断线互不影响。默认关。',
-      body: h('div', {}, BITE_OFF.map(([k, l, d, def, kind, unit, min, max]) =>
-        form.row({ key: k, label: l, help: d, kind: kind || 'bool', def, unit, min, max }, val(k, def)))),
-    }));
+      form.row({ key: 'hook_spawn_match_strength', label: '鱼钩大小影响出鱼', help: '0 表示不影响；1 表示大钩更容易钓到大鱼、小钩更容易钓到小鱼；2 更明显。选「按比例出鱼」时不起作用。', kind: 'float', min: 0, max: 2, def: '0' }, val('hook_spawn_match_strength', '0')),
+      h('p', { class: 'muted small', style: { margin: '18px 0 6px', fontWeight: 600 }, text: '鱼会咬断线组（与常规张力断线互不影响，默认关）' }),
+      BITE_OFF.map(([k, l, d, def, kind, unit, min, max]) =>
+        form.row({ key: k, label: l, help: d, kind: kind || 'bool', def, unit, min, max }, val(k, def)))) }));
 }
 
 // 四档比例编辑：输入相对权重，实时显示换算后的百分比
