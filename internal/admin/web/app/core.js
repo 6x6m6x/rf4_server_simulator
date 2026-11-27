@@ -121,6 +121,19 @@ export async function apiList(path, opt = {}) {
 
 // ---------- 格式化 ----------
 export const fmt = (n) => (n === null || n === undefined || n === '' ? '—' : Number(n).toLocaleString('zh-CN'));
+// 时间戳兼容 Unix 秒和 RFC3339 字符串（来自主分支）。
+export function tsNum(ts) {
+  if (ts === null || ts === undefined || ts === '') return 0;
+  const n = Number(ts);
+  if (Number.isFinite(n) && n > 0) return n > 1e12 ? n / 1000 : n;
+  const p = Date.parse(ts);
+  return Number.isNaN(p) ? 0 : p / 1000;
+}
+export function clockText(ts) {
+  const n = tsNum(ts);
+  if (!n) return '--:--:--';
+  return new Date(n * 1000).toLocaleTimeString('zh-CN', { hour12: false });
+}
 export function timeText(ts) {
   const n = Number(ts);
   if (!n) return '—';

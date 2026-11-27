@@ -1471,9 +1471,9 @@ function localInput(ts){
 function happyHourText(h){
   const q=!!(h&&h.qualified);
   const state=!h||h.enabled===false?'已关闭':(q?(h.active?'生效中':'已开启'):'未开通会员');
-  const ent=!q?'需开通会员':(h.unlimited?'永久会员，不限时长':'会员有效至 '+new Date(h.expires_at*1000).toLocaleString());
-  const remain=q&&!h.unlimited?` · 剩余 ${Math.ceil((h.remaining_seconds??0)/60)} 分钟`:'';
-  return `欢乐时光：${state} · ${ent}${remain} · 时长跟随会员设置`;
+  const ent=!q?'需开通会员':('会员有效至 '+new Date(h.expires_at*1000).toLocaleString());
+  const remain=q?` · 今日剩余 ${Math.ceil((h.remaining_seconds??0)/60)} 分钟（每日 1 小时）`:'';
+  return `欢乐时光：${state} · ${ent}${remain}`;
 }
 async function saveProfile(){
   const expRaw=$('#pf_membership_exp').value;
@@ -1579,7 +1579,7 @@ const FISH_RULE_SWITCHES={
   weather:{key:'fish_weather_enabled',prefix:'fishWeather',enabled:null,on:'按游戏内温度、天气和鱼种习性影响吃口；底钓、浮钓会间歇试口。',off:'关闭天气鱼口修正，沿用原来的一次判鱼流程。'},
   distribution:{key:'fish_distribution_enabled',prefix:'fishDistribution',enabled:null,on:'按地图鱼种、所在区域和游戏昼夜变化鱼口，每四个游戏小时重新分布。',off:'沿用现有分布，各处水域可出鱼，不增加点位限制。'},
   bait:{key:'fish_bait_rules_enabled',prefix:'fishRules',enabled:null,on:'根据钩上饵料筛选鱼种。',off:'沿用现有吃饵逻辑，不增加吃饵限制。'},
-  happy:{key:'happy_hour_enabled',prefix:'happyHour',default:true,enabled:null,on:'会员在线钓鱼期间全程生效：经验额外50%、鱼口提高10%、熟练度增长触发率提高25%；时长跟随会员，无每日限制。',off:'暂停欢乐时光加成，会员资格与到期时间不受影响。'}
+  happy:{key:'happy_hour_enabled',prefix:'happyHour',default:true,enabled:null,on:'会员每日在线钓鱼累计 1 小时：经验额外50%、鱼口提高10%、熟练度增长触发率提高25%；普通玩家无欢乐时光。',off:'暂停欢乐时光加成，会员资格与到期时间不受影响。'}
 };
 async function loadFishRules(){
   for(const x of Object.values(FISH_RULE_SWITCHES)){const el=$('#'+x.prefix+'Switch');if(el){el.disabled=true;el.checked=false;}}

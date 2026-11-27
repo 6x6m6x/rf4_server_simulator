@@ -2,14 +2,15 @@
 import { h, api, post, icon, toast, errText, pageHead, section, callout, badge, Form, savebar, setLeaveGuard, confirmDialog, render } from '../core.js';
 
 const STYLES = [
-  ['realistic', '真实鱼汛', '鱼按习性、天气、位置和饵料决定咬不咬。要研究钓点、选对饵，更接近真实钓鱼。', '下面六项规则中，除欢乐时光外全部开启'],
-  ['legacy', '全随机', '任何鱼都可能咬任何饵，出鱼完全随机。轻松，适合随便玩玩。', '下面六项规则中，除欢乐时光外全部关闭'],
+  ['realistic', '真实鱼汛', '鱼按习性、天气、位置和饵料决定咬不咬。要研究钓点、选对饵，更接近真实钓鱼。', '下面七项规则中，除欢乐时光外全部开启'],
+  ['legacy', '全随机', '任何鱼都可能咬任何饵，出鱼完全随机。轻松，适合随便玩玩。', '下面七项规则中，除欢乐时光外全部关闭'],
 ];
 export const RULE_SWITCHES = [
   ['bite_gate_enabled', '饵要对口', '拟饵不会钓到不吃拟饵的鱼（如泥鳅、鲤科鱼）；钓层不对时几乎不咬。', '0'],
   ['fish_ecology_enabled', '鱼种习性', '252 种鱼各按习性决定咬不咬：水层、昼夜、季节、天气、水底环境、拟饵动作都有影响。', '0'],
   ['fish_weather_enabled', '天气与水温', '游戏里的气温和天气会影响鱼口；底钓、浮钓时鱼会断断续续地试口。', '0'],
   ['fish_distribution_enabled', '鱼群分布', '每种鱼只在地图的特定区域出没，每 4 个游戏小时重新分布一次。', '0'],
+  ['marine_layer_enabled', '海钓水层影响', '开启后海钓钓组按海钓状态机修正水层：下沉按相对进度过渡，贴底为 0.93；关闭时回到旧的拟饵实时水层/固定贴底。', '0'],
   ['fish_bait_rules_enabled', '鱼会挑饵', '根据钩上挂的饵决定会来哪些鱼。每种鱼爱吃什么在「鱼饵偏好」里设置。', '0'],
   ['happy_hour_enabled', '欢乐时光', '会员专享，每日在线钓鱼累计 1 小时：经验 +50%、鱼口 +10%、熟练度 +25%；普通玩家无欢乐时光。', '1'],
 ];
@@ -26,6 +27,13 @@ const GRADE_SETS = {
     { prefix: 'two_stage_baited_', title: '打窝后', defs: [1, 92, 6, 1] },
   ],
 };
+// 鱼会咬断线组：与「张力超过承力」的常规断线是两条独立通路，默认关（来自主分支）。
+const BITE_OFF = [
+  ['bite_off_enabled', '鱼会咬断线组', '狗鱼、哲罗鱼、雀鳝、鼠鲨这类掠食鱼能在搏鱼时咬断引线。关闭后只有常规的张力过载断线。', '0'],
+  ['bite_off_over_pct', '鱼比引线重时的概率', '每次冲刺的咬断概率。官方口径 20%。', '20', 'float', '%', 0, 100],
+  ['bite_off_under_pct', '鱼比引线轻时的概率', '鱼重没到引线承载时仍有小概率咬断。官方口径 4%。', '4', 'float', '%', 0, 100],
+  ['bite_off_sprint_seconds', '冲刺判定间隔', '搏鱼期间两次咬断掷骰的最小间隔。官方「冲刺」是客户端本地机动，服务端用这个节拍近似。', '10', 'float', '秒', 1, 120],
+];
 const OTHER = [
   ['condition_health_enabled', '饥饿和寒冷会掉血', '关闭后生命值始终是满的，药品也不会消耗。', '1'],
   ['condition_fishing_pause_enabled', '钓鱼时精力不恢复', '竿在水里时精力暂停恢复，收竿后再恢复。关闭则一直正常恢复。', '1'],
@@ -94,7 +102,12 @@ export default async function rules() {
     }),
     section({ title: '其他', body: h('div', {},
       OTHER.map(([k, l, d, def]) => form.row({ key: k, label: l, help: d, kind: 'bool', def }, val(k, def))),
-      form.row({ key: 'hook_spawn_match_strength', label: '鱼钩大小影响出鱼', help: '0 表示不影响；1 表示大钩更容易钓到大鱼、小钩更容易钓到小鱼；2 更明显。选「按比例出鱼」时不起作用。', kind: 'float', min: 0, max: 2, def: '0' }, val('hook_spawn_match_strength', '0'))) }));
+      form.row({ key: 'hook_spawn_match_strength', label: '鱼钩大小影响出鱼', help: '0 表示不影响；1 表示大钩更容易钓到大鱼、小钩更容易钓到小鱼；2 更明显。选「按比例出鱼」时不起作用。', kind: 'float', min: 0, max: 2, def: '0' }, val('hook_spawn_match_strength', '0'))) })),
+    section({
+      title: '鱼会咬断线组', desc: '掠食鱼在搏鱼时咬断引线，和「张力超过承力」的常规断线互不影响。默认关。',
+      body: h('div', {}, BITE_OFF.map(([k, l, d, def, kind, unit, min, max]) =>
+        form.row({ key: k, label: l, help: d, kind: kind || 'bool', def, unit, min, max }, val(k, def)))),
+    }));
 }
 
 // 四档比例编辑：输入相对权重，实时显示换算后的百分比

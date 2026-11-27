@@ -1,5 +1,5 @@
-// 饵效控速参数显隐与保存链路：开关关闭时数值调整页不渲染 pace_* 行（原位提示），
-// 开启后出现且保存走 POST /api/tunables。
+// 饵效控速参数显隐与保存链路（我方逻辑）：好饵/差饵/海钓等待区间等 pace_* 行始终可见、
+// 可直接改；开关只决定它们是否参与计算。保存走 POST /api/tunables。
 const {test}=require('node:test');
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {chromium}=require('playwright');
@@ -21,7 +21,7 @@ function mockRoute(page,data,posts){
  });
 }
 
-test('tuning hides pace rows while bite pace disabled',async()=>{
+test('tuning always shows pace rows while bite pace disabled',async()=>{
  const browser=await chromium.launch({headless:true,executablePath:process.env.RF4_TEST_BROWSER});
  try{
   const context=await browser.newContext({viewport:{width:1280,height:900}});
@@ -30,12 +30,11 @@ test('tuning hides pace rows while bite pace disabled',async()=>{
   page.on('pageerror',e=>errors.push(e.message));
   mockRoute(page,{bite_pace_enabled:'0'},[]);
   await page.goto('http://127.0.0.1:19216/#tuning/bite');
-  await page.getByRole('heading',{name:'游戏参数',exact:true}).waitFor();
+  await page.getByRole('heading',{name:'数值调整',exact:true}).waitFor();
   await page.getByText('每次抛竿有鱼的概率',{exact:true}).waitFor();
-  assert.equal(await page.locator('#f_pace_good_max').count(),0,'开关关闭时不应渲染 pace 参数行');
-  assert.equal(await page.locator('#f_pace_good_min').count(),0);
-  await page.getByText('开启后这里才会出现好饵').waitFor();
-  assert.equal(await page.getByText('3 项，一般不用改').count(),2,'进阶折叠区应保留两组各 3 项');
+  assert.equal(await page.getByText('好饵等待下限（饵效控速）',{exact:true}).count(),1,'开关关闭时好饵等待下限也应可见');
+  assert.equal(await page.getByText('海钓等待下限·pace',{exact:true}).count(),1,'海钓等待上下限也应可见');
+  await page.getByText('现在就能改，但要在开关开启后才参与计算').waitFor();
   assert.deepEqual(errors,[]);
   await context.close();
  }finally{await browser.close()}
@@ -50,14 +49,12 @@ test('tuning shows pace rows when enabled and saves through tunables API',async(
   page.on('pageerror',e=>errors.push(e.message));
   mockRoute(page,{bite_pace_enabled:'1'},posts);
   await page.goto('http://127.0.0.1:19216/#tuning/bite');
-  await page.getByRole('heading',{name:'游戏参数',exact:true}).waitFor();
+  await page.getByRole('heading',{name:'数值调整',exact:true}).waitFor();
   await page.getByText('好饵等待下限（饵效控速）',{exact:true}).waitFor();
-  assert.equal(await page.locator('[id^=f_pace_good_max_]').count(),1);
-  assert.equal(await page.locator('[id^=f_pace_lure_max_]').count(),1);
-  assert.equal(await page.getByText('开启后这里才会出现好饵').count(),0,'开启后不应显示提示');
+  assert.equal(await page.getByText('海钓等待上限·pace',{exact:true}).count(),1);
   await page.locator('[id^=f_pace_good_max_]').fill('45');
   await page.getByRole('button',{name:'保存修改',exact:true}).click();
-  await page.getByText('已保存。服务端最多 30 秒生效。',{exact:true}).waitFor({timeout:5000});
+  await page.getByText('已保存，约 30 秒内生效',{exact:true}).waitFor({timeout:5000});
   const hit=posts.find(p=>p&&p.key==='pace_good_max');
   assert.ok(hit,'应 POST pace_good_max');
   assert.equal(String(hit.value),'45');

@@ -62,9 +62,12 @@ function baitCell(row, pref) {
   const allow = (pref && pref.allow) || [];
   const groups = (row.bait_groups || []).filter((g) => g && g.length);
   const rotating = groups.length > 1 && Number(row.bait_rotate_sec) > 0;
+  const src = { official: '周档统计', manual: '人工覆盖', static: '静态', new: '新增' }[row.weight_source] || row.weight_source;
   return h('td', { style: { whiteSpace: 'normal', maxWidth: '320px' } },
     allow.length ? h('div', { class: 'small text-2', text: allow.slice(0, 5).join('、') + (allow.length > 5 ? ` 等 ${allow.length} 种` : '') }) : h('span', { class: 'muted small', text: '没有设置' }),
-    rotating ? h('div', { style: { marginTop: '4px' } }, badge(`轮换 ${groups.length} 组 · 每 ${Math.round(row.bait_rotate_sec / 60)} 分钟${row.bait_rotate_mode === 'strict' ? ' · 严格' : ''}`, 'accent')) : null);
+    rotating ? h('div', { style: { marginTop: '4px' } }, badge(`轮换 ${groups.length} 组 · ${row.bait_rotate_mode === 'strict' ? '严格' : '宽松'} · 每 ${Math.round(row.bait_rotate_sec / 60)} 分钟`, 'accent'),
+      h('div', { class: 'muted small', style: { marginTop: '2px' }, title: groups.map((g, i) => `第${i + 1}组：${g.join('、')}`).join('\n'), text: '各组：' + groups.map((g) => g.slice(0, 3).join('、')).join(' / ') })) : null,
+    src ? h('div', { class: 'muted small', style: { marginTop: '2px' }, text: '来源：' + src }) : null);
 }
 
 function fishView(cfg, baitByKey = {}) {
@@ -103,7 +106,11 @@ function fishView(cfg, baitByKey = {}) {
     tbody.replaceChildren(...(rows.length ? rows.map((f) => {
       const on = h('input', { type: 'checkbox', 'aria-label': '启用 ' + f.name_zh, onchange: (e) => { f.enabled = e.target.checked; touch(); draw(); } });
       on.checked = !!f.enabled;
-      const w = h('input', { class: 'input num', style: { width: '90px', height: '30px' }, value: f.weight, onchange: (e) => { const n = Number(e.target.value); f.weight = e.target.value.trim() !== '' && Number.isFinite(n) ? n : f.base_weight; f.has_override = true; touch(); draw(); } });
+      const w = h('input', { class: 'input num', style: { width: '90px', height: '30px' }, value: f.weight, onchange: (e) => {
+        const raw = e.target.value, n = Number(raw);
+        if (raw.trim() !== '' && (!Number.isFinite(n) || n < 0)) { toast('权重必须为非负数，已保留原值', 'bad'); e.target.value = f.weight; return; }
+        f.weight = raw.trim() !== '' && Number.isFinite(n) ? n : f.base_weight; f.has_override = true; touch(); draw();
+      } });
       const pct = f.enabled && Number(f.weight) > 0 ? (Number(f.weight) / sum * 100) : 0;
       return h('tr', { style: { opacity: f.enabled ? 1 : 0.5 } },
         h('td', {}, h('label', { class: 'toggle' }, on, h('span', { class: 'track' }))),

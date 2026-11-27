@@ -10,7 +10,10 @@ let Q = '', FAM = '', SIZE = '';
 export default async function hooks() {
   const tbody = h('tbody');
   const count = h('span', { class: 'muted small' });
-  const sizeSel = h('select', { class: 'select', style: { width: '130px' }, onchange: (e) => { SIZE = e.target.value; load(); } }, h('option', { value: '', text: '所有尺寸' }));
+  // 钩号下拉预填 #0~#33（来自主分支），再按实际数据补齐。
+  const sizeSel = h('select', { class: 'select', style: { width: '130px' }, onchange: (e) => { SIZE = e.target.value; load(); } },
+    h('option', { value: '', text: '所有尺寸' }), ...Array.from({ length: 34 }, (_, i) => h('option', { value: String(i), text: '#' + i, hidden: true })));
+  const sizeOptions = new Set();
   const famSel = h('select', { class: 'select', style: { width: '140px' }, onchange: (e) => { FAM = e.target.value; load(); } }, FAMILY.map(([k, l]) => h('option', { value: k, text: l, selected: k === FAM })));
   let sizesFilled = false;
   async function load() {
@@ -20,7 +23,12 @@ export default async function hooks() {
       const list = d.profiles || [];
       if (!sizesFilled && list.length) {
         sizesFilled = true;
-        for (const s of [...new Set(list.map((p) => p.size))].sort((a, b) => a - b)) sizeSel.append(h('option', { value: s, text: '#' + s }));
+        for (const s of [...new Set(list.map((p) => p.size))].sort((a, b) => a - b)) {
+          sizeOptions.add(String(s));
+          const opt = [...sizeSel.children].find((o) => o.value === String(s));
+          if (opt) opt.hidden = false;
+          else sizeSel.append(h('option', { value: s, text: '#' + s }));
+        }
       }
       count.textContent = list.length < (d.total || 0) ? `找到 ${fmt(d.total)} 个，显示前 ${list.length} 个` : `${fmt(list.length)} 个型号`;
       tbody.replaceChildren(...(list.length ? list.map((p) => h('tr', {},

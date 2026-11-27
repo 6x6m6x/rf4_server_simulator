@@ -23,13 +23,11 @@ export default async function bait() {
     } catch (e) { tbody.replaceChildren(h('tr', {}, h('td', { colspan: 5 }, empty('读取失败', errText(e))))); }
   }
   function draw() {
-    const list = rows.filter((r) => FILTER === 'all' || (FILTER === 'rule' && r.has_rule) || (FILTER === 'none' && !r.has_rule) || (FILTER === 'edited' && r.source === 'override'));
+    const list = rows.filter((r) => FILTER === 'all' || (FILTER === 'tier3' && r.tier3 > 0) || (FILTER === 'rule' && r.has_rule) || (FILTER === 'none' && !r.has_rule) || (FILTER === 'edited' && r.source === 'override'));
     count.textContent = `${list.length} 种鱼`;
     tbody.replaceChildren(...(list.length ? list.map((r) => h('tr', { style: { cursor: 'pointer' }, onclick: () => editFish(r, load) },
       h('td', {}, h('b', { text: r.name_zh }), h('span', { class: 'sub', text: (r.locs || []).slice(0, 3).join('、') + ((r.locs || []).length > 3 ? ' 等' : '') })),
-      h('td', { style: { whiteSpace: 'normal', maxWidth: '460px' } }, r.has_rule
-        ? h('div', { class: 'small' }, chipsInline(r.allow), (r.deny || []).length ? h('div', { class: 'muted', text: '不吃：' + r.deny.join('、') }) : null)
-        : h('span', { class: 'muted small', text: '没有设置，按实际钓获数据判断' })),
+      h('td', { style: { whiteSpace: 'normal', maxWidth: '460px' } }, h('div', { class: 'small' }, nowLine(r))),
       h('td', {}, r.diet ? (r.lure_ok ? badge('会', 'ok') : badge('不会')) : h('span', { class: 'muted', text: '—' })),
       h('td', {}, layerBar(r.layer, 120)),
       h('td', {}, r.source === 'override' ? (r.enabled ? badge('改过', 'warn') : badge('改过·已停用')) : h('span', { class: 'muted small', text: '默认' }),
@@ -45,7 +43,7 @@ export default async function bait() {
       h('div', { class: 'row', style: { marginBottom: '14px' } },
         h('div', { class: 'grow', style: { maxWidth: '320px' } }, searchBox('搜索鱼名，如 狗鱼', debounce((v) => { Q = v; load(); }, 300), Q)),
         locSel,
-        segmented([['all', '全部'], ['rule', '已设置'], ['none', '没设置'], ['edited', '我改过的']], FILTER, (v) => { FILTER = v; draw(); }),
+        segmented([['all', '全部'], ['tier3', '有 Tier 3 饵'], ['rule', '已设置'], ['none', '没设置'], ['edited', '我改过的']], FILTER, (v) => { FILTER = v; draw(); }),
         h('span', { class: 'spacer' }), count),
       h('div', { class: 'table-wrap', style: { maxHeight: 'calc(100vh - 260px)' } }, h('table', { class: 'table' },
         h('thead', {}, h('tr', {}, h('th', { text: '鱼' }), h('th', { text: '爱吃' }), h('th', { text: '咬拟饵' }), h('th', { text: '活动水层' }), h('th', { text: '状态' }))), tbody))));
@@ -55,6 +53,19 @@ function chipsInline(list) {
   const l = list || [];
   if (!l.length) return h('span', { class: 'muted', text: '—' });
   return h('span', { text: l.slice(0, 6).join('、') + (l.length > 6 ? ` 等 ${l.length} 种` : '') });
+}
+// 一句话摘要：现在吃什么、不吃什么、是否轮换、前置条件（来自主分支）。
+function nowLine(r) {
+  if (!r.has_rule) return '没有设置，按实际钓获数据判断';
+  const bits = [];
+  if ((r.allow || []).length) bits.push('吃 ' + r.allow.slice(0, 2).join('、') + (r.allow.length > 2 ? ` 等 ${r.allow.length} 种` : ''));
+  if ((r.bottom_only || []).length) bits.push('底钓另吃 ' + r.bottom_only.slice(0, 2).join('、'));
+  if ((r.deny || []).length) bits.push('不吃 ' + r.deny.slice(0, 2).join('、'));
+  if (r.rotation && r.rotation.enabled) bits.push('轮换 ' + r.rotation.total + ' 组');
+  if (r.condition && r.condition !== '无') bits.push(r.condition);
+  if (r.source === 'override' && r.enabled === false) bits.push('已停用');
+  const line = bits.slice(0, 3).join('；');
+  return line ? (line.length > 64 ? line.slice(0, 62) + '…' : line) : '已启用，但没有填具体的饵';
 }
 // 水层条：左水面右水底，色块是活动范围，竖线是最爱的深度
 function layerBar(layer, width = 200) {
@@ -129,7 +140,7 @@ function editFish(r, reload) {
 
 // 只读：这条鱼的习性数据，帮助判断该怎么设置
 function habits(r) {
-  if (!r.diet && !r.layer) return null;
+  if (!r.diet && !r.layer && !r.official?.length && !r.baits?.length && !r.bite_verdict) return null;
   const bars = DIET.map(([k, label]) => {
     const v = (r.diet && r.diet[k]) || 0, gate = k === 'lure' ? 0.3 : 0.25, likes = v >= gate;
     return h('div', { class: 'row', style: { flexWrap: 'nowrap', fontSize: '12.5px' } },
@@ -142,7 +153,9 @@ function habits(r) {
     h('div', { class: 'stack', style: { paddingTop: '12px' } },
       h('div', {}, h('div', { class: 'small text-2', style: { marginBottom: '6px' }, text: r.lure_ok ? '会咬拟饵。' : '不咬拟饵。' }), h('div', { class: 'stack', style: { gap: '5px' } }, bars)),
       h('div', {}, h('div', { class: 'small text-2', style: { marginBottom: '6px' }, text: '活动水层（左边水面，右边水底，白线是最爱的深度）' }), layerBar(r.layer, 320)),
-      (r.baits || []).length ? h('div', { class: 'small muted', text: '实际钓获最多的饵：' + r.baits.slice(0, 8).map((b) => b.bait_id).join('、') }) : null,
+      r.bite_verdict ? h('div', { class: 'small muted', text: `${r.bite_verdict} · 首选 ${r.bite_ready ?? '—'} · 保底 ${r.bite_fallback ?? '—'} · 不吃 ${r.bite_blocked ?? '—'}` }) : null,
+      r.official?.length ? h('div', { class: 'small muted', text: '官服占比：' + r.official.map((b) => `${b.bait_id} ${b.pct}%`).join('、') }) : null,
+      (r.baits || []).length ? h('div', { class: 'small muted', text: '逐饵证据：' + r.baits.slice(0, 10).map((b) => `${b.bait_id}（T${b.tier} / ${b.evidence}）`).join('、') }) : null,
       r.qual_g ? h('div', { class: 'small muted', text: `达标约 ${r.qual_g} g${r.trophy_g ? `，奖杯约 ${r.trophy_g} g` : ''}。` }) : null));
 }
 

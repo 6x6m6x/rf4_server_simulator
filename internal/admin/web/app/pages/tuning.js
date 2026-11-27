@@ -141,6 +141,13 @@ const SKILL_GAIN_KEYS = [
   ['skill_gain_pct_8', '制作拟饵', '路亚手工制作熟练度。'],
 ];
 const SKILL_GAIN_MODES = [['native', '原版概率'], ['fixed100', '百分百'], ['custom', '自定义']];
+// 鱼获档位对熟练度增量的倍数（1~4 对应 grade 枚举，填 1 = 不加成）——来自主分支，按我方写法重写。
+const SKILL_GRADE_KEYS = [
+  ['skill_grade_mult_1', '未达标鱼倍率', '协议里的 grade 1。填 1 = 不加成。', 1],
+  ['skill_grade_mult_2', '合格鱼倍率', '协议里的 grade 2，绝大多数渔获是这一档。', 1],
+  ['skill_grade_mult_3', '奖杯鱼倍率', '协议里的 grade 3，即「上星」的鱼。', 1],
+  ['skill_grade_mult_4', '蓝冠鱼倍率', '协议里的 grade 4，超级稀有。', 1],
+];
 let CAT = 'bite';
 
 function skillGainModeOf(t) {
@@ -168,10 +175,16 @@ function skillGainSection(form, t, val) {
   }, label)));
   const fields = mode === 'custom' ? h('div', { class: 'stack', style: { marginTop: '14px' } }, SKILL_GAIN_KEYS.map(([key, label, help]) =>
     form.row({ key, label, help, kind: 'float', min: 0, max: 100, unit: '%', def: 0 }, val(key, 0)))) : null;
+  // 鱼获档位加成：只放大熟练度增量，不改「这次涨不涨」的概率，两种模式都叠加。
+  const gradeFields = h('div', { class: 'stack', style: { marginTop: '14px' } },
+    h('p', { class: 'muted small', style: { fontWeight: '600', marginBottom: '2px' }, text: '按鱼获档位加成' }),
+    h('p', { class: 'muted small', text: '钓到越稀有的鱼，单次熟练度涨得越多。倍数只放大增量，不改变上面的概率。基础增量 0.1 或 0.2 乘倍数后四舍五入到 0.1，建议 1/2/4/8 这类整数倍。填 0 让该档完全不涨；制作和挖饵没有鱼档位，始终按 1 倍。' }),
+    SKILL_GRADE_KEYS.map(([key, label, help, def]) =>
+      form.row({ key, label, help, kind: 'float', min: 0, max: 20, unit: '倍', def }, val(key, def))));
   return section({
     title: '技能升级概率', desc: '一键切换全部技能：原版概率、全部百分百，或逐项自定义。0=原版公式，100=必定增长。',
     actions: buttons,
-    body: h('div', {}, h('p', { class: 'muted small', text: '百分百模式会让每次符合条件的钓获、挖饵或制作都获得熟练度；固定百分比模式不叠加欢乐时光对原版概率的修正。' }), fields),
+    body: h('div', {}, h('p', { class: 'muted small', text: '百分百模式会让每次符合条件的钓获、挖饵或制作都获得熟练度；固定百分比模式不叠加欢乐时光对原版概率的修正。' }), fields, gradeFields),
   });
 }
 
@@ -199,21 +212,20 @@ export default async function tuning(params) {
     },
   }, l)));
 
-  // 饵效控速未开启时不渲染 pace_* 行：这些参数只在开关打开后才参与计算，
-  // 关闭时全部走 legacy/中性通路。
+  // 好饵/差饵/海钓等待上下限等 pace_* 参数始终可见、可直接改：
+  // 「饵效控速」开关只决定它们是否参与计算，不该把设置项藏起来让用户找不到。
   const paceOn = String(t.bite_pace_enabled ?? '0') === '1';
-  const paceVisible = (d) => paceOn || !d[0].startsWith('pace_');
   let body;
   if (CAT === 'event') body = eventView(form, t, val);
   else {
     const g = G[CAT];
-    const advRows = (g.adv || []).filter(paceVisible);
+    const advRows = g.adv || [];
     body = h('div', {},
       section({
         title: g.title, desc: g.desc,
         body: h('div', {},
-          rows(g.main.filter(paceVisible)),
-          CAT === 'bite' && !paceOn ? h('p', { class: 'muted small', text: '「饵效控速」未开启（开关在「玩法规则 → 其他」）：开启后这里才会出现好饵/差饵/路亚等待区间等设置项；未开启时这些参数不参与任何计算。' }) : null,
+          rows(g.main),
+          CAT === 'bite' && !paceOn ? h('p', { class: 'muted small', text: '「饵效控速」当前未开启（开关在「玩法规则 → 其他」）：下面好饵/差饵/路亚/海钓等待区间现在就能改，但要在开关开启后才参与计算。' }) : null,
           advRows.length ? h('details', { class: 'advanced' }, h('summary', {}, '进阶 ', h('small', { text: `（${advRows.length} 项，一般不用改）` })), h('div', {}, rows(advRows))) : null),
       }),
       (g.groups || []).map(([title, desc, list]) => section({ title, desc, body: h('div', {}, rows(list)) })),

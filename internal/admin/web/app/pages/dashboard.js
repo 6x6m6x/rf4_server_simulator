@@ -1,4 +1,4 @@
-import { h, api, apiList, fmt, relTime, timeText, icon, navigate, section, badge, empty, pageHead, btn, render, setPageCleanup } from '../core.js';
+import { h, api, apiList, fmt, relTime, timeText, icon, navigate, section, badge, empty, pageHead, btn, render, setPageCleanup, debounce } from '../core.js';
 import { auditLabel } from '../labels.js';
 import { updateBanner } from '../main.js';
 
@@ -15,9 +15,9 @@ const RULES = [
 ];
 
 export default async function dashboard() {
-  const [d, audits, tuns, mode] = await Promise.all([
-    api('/api/dashboard'), apiList('/api/audit?limit=8').catch(() => []), api('/api/tunables').catch(() => ({})),
-    api('/api/fish/bite_mode').catch(() => ({})),
+  const [d, audits, tuns, mode, stores] = await Promise.all([
+    api('/api/dashboard'), apiList('/api/audit?limit=24').catch(() => []), api('/api/tunables').catch(() => ({})),
+    api('/api/fish/bite_mode').catch(() => ({})), apiList('/api/stores').catch(() => []),
   ]);
   updateBanner(d.update);
   const timer = setInterval(() => { if (!document.hidden) render(); }, 8000);
@@ -30,6 +30,43 @@ export default async function dashboard() {
   ];
   const modeName = { realistic: '真实鱼汛', legacy: '全随机（旧版）', mixed: '自定义' }[mode.mode] || '未知';
   const ruleOn = (k) => (tuns[k] === undefined ? k === 'happy_hour_enabled' : tuns[k] === '1');
+
+  // 当前生效的关键口径：只写能从接口读出来的东西（来自主分支，用我方 section 写法重写）。
+  const canons = [];
+  canons.push(['发鱼方式', mode.spawn_mode || modeName]);
+  if (tuns.grade_pct_qualified !== undefined) {
+    canons.push(['四档占比', `未达标 ${tuns.grade_pct_below || '0'}% · 合格 ${tuns.grade_pct_qualified}% · 奖杯 ${tuns.grade_pct_trophy || '0'}% · 蓝冠 ${tuns.grade_pct_super || '0'}%`]);
+  }
+  if (tuns.bite_delay_max !== undefined) {
+    canons.push(['咬钩节奏', `普通上限 ${tuns.bite_delay_max} 秒${tuns.bite_delay_lure_max ? ' / 路亚上限 ' + tuns.bite_delay_lure_max + ' 秒' : ''}${String(tuns.bite_pace_enabled) === '1' ? '（饵效控速已开）' : ''}`]);
+  }
+  const enabled = RULES.filter(([k]) => ruleOn(k)).map(([, n]) => n);
+  canons.push(['玩法开关', enabled.length ? enabled.join(' · ') : '全部关闭']);
+  if (stores.length) {
+    const overrideCount = stores.reduce((n, s) => n + (s.override_count || 0), 0);
+    canons.push(['商店覆盖', overrideCount ? `${overrideCount} 件商品有覆盖价` : '没有覆盖，全部走基础价']);
+  }
+  canons.push(['饵要对口', ruleOn('bite_gate_enabled') ? '开：饵不对口不咬' : '关：只要饵能入口就咬']);
+
+  // 最近的修改：按关键词筛动作/对象/管理员。
+  const logState = { q: '' };
+  const logBox = h('div', {});
+  const drawLogs = () => {
+    const q = logState.q.trim().toLowerCase();
+    const rows = audits.filter((e) => {
+      const s = `${auditLabel(e.Action ?? e.action)} ${e.Target ?? e.target} ${e.Admin ?? e.admin}`;
+      return !q || s.toLowerCase().includes(q);
+    });
+    logBox.replaceChildren(rows.length ? h('div', { class: 'list' }, rows.map((e) => {
+      const ts = e.TS ?? e.ts, target = (e.Target ?? e.target) || '';
+      return h('div', { class: 'row', style: { padding: '9px 0', borderTop: '1px solid var(--line)', flexWrap: 'nowrap' } },
+        h('span', { class: 'muted small nowrap', style: { width: '90px' }, title: timeText(ts), text: relTime(ts) }),
+        h('b', { style: { fontWeight: '600' }, text: auditLabel(e.Action ?? e.action) }),
+        h('span', { class: 'muted small grow', style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, text: target }),
+        h('span', { class: 'muted small', text: e.Admin ?? e.admin ?? '' }));
+    })) : empty('没有匹配的记录', '换个关键词，或点「刷新」重新拉一次审计表。'));
+  };
+  drawLogs();
 
   return h('div', { class: 'page' },
     pageHead('总览', '服务器现在的情况，以及常用功能的入口。', btn('刷新', () => render(), 'sm', { icon: 'refresh' })),
@@ -53,15 +90,16 @@ export default async function dashboard() {
             h('span', { text: n }), ruleOn(k) ? badge('开启', 'ok', true) : badge('关闭', '', true))))),
       })),
     section({
-      title: '最近的修改',
-      actions: btn('全部记录', () => navigate('audit'), 'sm'),
-      body: audits.length ? h('div', { class: 'list' }, audits.map((e) => {
-        const ts = e.TS ?? e.ts, target = (e.Target ?? e.target) || '';
-        return h('div', { class: 'row', style: { padding: '9px 0', borderTop: '1px solid var(--line)', flexWrap: 'nowrap' } },
-          h('span', { class: 'muted small nowrap', style: { width: '90px' }, title: timeText(ts), text: relTime(ts) }),
-          h('b', { style: { fontWeight: 600 }, text: auditLabel(e.Action ?? e.action) }),
-          h('span', { class: 'muted small grow', style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, text: target }),
-          h('span', { class: 'muted small', text: e.Admin ?? e.admin ?? '' }));
-      })) : empty('还没有修改记录', '在后台做的每一次修改都会记在这里。'),
+      title: '当前生效的关键口径', desc: '只列能从接口读出来的实时值，读不到就不显示。',
+      body: h('div', { class: 'list' }, canons.map(([k, v]) => h('div', { class: 'row', style: { justifyContent: 'space-between', padding: '8px 0', borderTop: '1px solid var(--line)', flexWrap: 'nowrap', gap: '12px' } },
+        h('b', { class: 'nowrap', style: { fontWeight: 600, minWidth: '84px' }, text: k }),
+        h('span', { class: 'muted small grow', text: v })))),
+    }),
+    section({
+      title: '最近的修改', desc: '后台审计表里最近的记录，可按动作、对象或管理员筛。',
+      actions: h('div', { class: 'row', style: { gap: '6px' } },
+        h('input', { class: 'input', type: 'search', placeholder: '搜动作、对象或管理员', style: { width: '210px' }, oninput: debounce((e) => { logState.q = e.target.value; drawLogs(); }, 200) }),
+        btn('全部记录', () => navigate('audit'), 'sm')),
+      body: logBox,
     }));
 }

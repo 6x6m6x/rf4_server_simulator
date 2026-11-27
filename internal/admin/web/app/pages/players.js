@@ -163,7 +163,7 @@ function profile(p, reload, setDirty) {
   const expWrap = h('div', { class: 'row', hidden: String(p.membership) !== '1' }, h('span', { class: 'muted small', text: '到期时间' }), expInput);
   const seg = segmented([['0', '普通'], ['1', '限时会员'], ['2', '永久会员']], String(p.membership || 0), (v) => { memberField.input.value = v; expWrap.hidden = v !== '1'; form.refresh(); });
   const hh = p.happy_hour || {};
-  const hhText = hh.enabled === false ? '欢乐时光已在「玩法规则」里关闭。' : !hh.qualified ? '普通玩家没有欢乐时光；开通会员后每日可享 1 小时（经验+50%/鱼口+10%/金币+50%）。'
+  const hhText = hh.enabled === false ? '欢乐时光已在「玩法规则」里关闭。' : !hh.qualified ? '普通玩家没有欢乐时光；会员每日在线钓鱼累计 1 小时可享（经验+50%/鱼口+10%/熟练度+25%）。'
     : `会员欢乐时光有效，今日剩余约 ${Math.ceil((hh.remaining_seconds || 0) / 60)} 分钟（每日 1 小时）。`;
   // IP 绑定：与 gateway 共用映射，独立于档案保存。
   const ipBody = h('tbody');
@@ -342,11 +342,13 @@ function addFish(p, reload) {
       form.stacked({ key: 'weight_g', label: '重量（克）', kind: 'int', min: 1 }, '500'),
       form.stacked({ key: 'cat', label: '档位', kind: 'select', options: [['1', '普通'], ['2', '达标'], ['3', '奖杯'], ['4', '蓝冠']] }, '1'),
       form.stacked({ key: 'keep_level', label: '地点（可选）', kind: 'string', placeholder: '例如 level_001_lake' }, ''),
+      form.stacked({ key: 'keep_loc', label: '场景（可选）', kind: 'string', placeholder: '例如 白河' }, ''),
+      form.stacked({ key: 'keep_spot', label: '钓点编号（可选）', kind: 'int', min: 0 }, '0'),
       form.stacked({ key: 'keep_bait', label: '用的饵（可选）', kind: 'string', placeholder: '例如 worm_01' }, ''))),
     actions: [{ label: '取消', kind: 'ghost' }, {
       label: '放入', kind: 'primary', onClick: async () => {
         if (!form.validate(['species', 'weight_g'])) return true;
-        await post('/api/players/keepnet/add', { uid: p.uid, species: form.value('species'), weight_g: +form.value('weight_g'), cat: +form.value('cat'), keep_level: form.value('keep_level'), keep_loc: '', keep_spot: 0, keep_bait: form.value('keep_bait') });
+        await post('/api/players/keepnet/add', { uid: p.uid, species: form.value('species'), weight_g: +form.value('weight_g'), cat: +form.value('cat'), keep_level: form.value('keep_level'), keep_loc: form.value('keep_loc'), keep_spot: +form.value('keep_spot') || 0, keep_bait: form.value('keep_bait') });
         toast('已放入，约 2 秒后生效'); setTimeout(reload, 2300);
       },
     }],
