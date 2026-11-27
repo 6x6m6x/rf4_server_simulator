@@ -81,9 +81,19 @@ func TestFishQueryReplyNeverShowsSpot(t *testing.T) {
 	}
 }
 
+// 无钓法方案但已设喜爱饵：仍要报出喜爱饵，不能只回「当前地图没有可行方案」。
+func TestFishQueryReplyNoPlanStillShowsFavoriteBaits(t *testing.T) {
+	result := &FishQueryResponse{}
+	got := formatFishQueryReply("红白锦鲤", result, []string{"玉米", "红虫"})
+	want := "红白锦鲤\n喜爱饵：玉米、红虫\n当前地图、当前条件没有可行方案，可指定其他地图。"
+	if got != want {
+		t.Fatalf("no-plan reply = %q; want %q", got, want)
+	}
+}
+
 func TestFishQueryReplyLimitedAndNoInventedCoordinate(t *testing.T) {
 	result := &FishQueryResponse{}
-	if got := formatFishQueryReply("河鲈", result, nil); got != "河鲈\n当前地图、当前条件没有可行方案，可指定其他地图。" {
+	if got := formatFishQueryReply("河鲈", result, nil); !strings.Contains(got, "该鱼未设置喜爱饵") {
 		t.Fatalf("empty reply = %s", got)
 	}
 	for range 4 {

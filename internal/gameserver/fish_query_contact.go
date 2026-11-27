@@ -142,11 +142,12 @@ func (s *Server) fishQueryReply(ctx context.Context, sess *Session, text string)
 //   - 保留钓法分组与理论速率。
 func formatFishQueryReply(fishName string, result *FishQueryResponse, favoriteBaits []string) string {
 	fishName = fishQueryName(fishName)
-	if len(result.Plans) == 0 {
-		return fishName + "\n当前地图、当前条件没有可行方案，可指定其他地图。"
-	}
+	// 喜爱饵是鱼级配置，与当前地图有没有钓法方案无关：先判它、先播报它。
 	if len(favoriteBaits) == 0 {
 		return fishName + "\n该鱼未设置喜爱饵（请在管理后台「鱼饵偏好」里设置爱吃饵）。"
+	}
+	if len(result.Plans) == 0 {
+		return fishName + "\n喜爱饵：" + strings.Join(favoriteBaits, "、") + "\n当前地图、当前条件没有可行方案，可指定其他地图。"
 	}
 	lines := []string{result.Plans[0].MapName + " · " + fishName}
 	lines = append(lines, "喜爱饵："+strings.Join(favoriteBaits, "、"))
