@@ -30,17 +30,16 @@ func TestFishQueryReplyUsesFavoriteBaitsNoBuiltinNoSpot(t *testing.T) {
 		{MapName: "旧奥斯特罗格湖", BaitName: "蛆", RigType: 12, RigName: "底钓", Chance: .125, TheoreticalPerHour: 45,
 			References: []FishQueryReference{{Coordinate: "45:12", Catches: 100}}},
 	}}
-	want := "旧奥斯特罗格湖 · 河鲈\n" +
+	want := "河鲈\n" +
 		"喜爱饵：红虫、玉米\n" +
-		"【路亚】\n1. 路亚 · 理论 80.00条/小时\n" +
-		"【手杆】\n1. 浮钓 · 理论 65.88条/小时\n" +
-		"【底钓】\n1. 底钓 · 理论 45.00条/小时\n" +
-		"理论速率不计搏鱼、收鱼时间。"
+		"【路亚】\n【手杆】\n【底钓】\n" +
+		"信息仅供参考"
 	if got := formatFishQueryReply("河鲈", result, []string{"红虫", "玉米"}); got != want {
 		t.Fatalf("reply = %q; want %q", got, want)
 	}
-	// 内置饵名和钓点绝不能出现。
-	for _, banned := range []string{"亮片", "蚯蚓", "蛆", "45:12", "参考点", "落点", "声呐", "钓点", "区域"} {
+	// 内置饵名、钓点、收益、方案细节绝不能出现。
+	for _, banned := range []string{"亮片", "蚯蚓", "蛆", "45:12", "参考点", "落点", "声呐", "钓点", "区域",
+		"旧奥斯特罗格湖", "理论", "条/小时", "1. ", "2. ", "3. ", "不计搏鱼"} {
 		if strings.Contains(want, banned) {
 			t.Fatalf("favorite-bait reply should not contain %q", banned)
 		}
@@ -63,12 +62,13 @@ func TestFishQueryReplyNeverShowsSpot(t *testing.T) {
 			CoordinateKind: "manual", References: []FishQueryReference{{Coordinate: "99:99"}}},
 	}}
 	reply := formatFishQueryReply("河鲈", result, []string{"喜爱饵"})
-	if !strings.Contains(reply, "喜爱饵：喜爱饵") || !strings.Contains(reply, "路亚·阶梯") {
-		t.Fatalf("favorite bait and method should remain: %s", reply)
+	if !strings.Contains(reply, "喜爱饵：喜爱饵") || !strings.Contains(reply, "【路亚】") ||
+		!strings.HasSuffix(reply, "\n信息仅供参考") {
+		t.Fatalf("favorite bait and rig should remain: %s", reply)
 	}
-	for _, banned := range []string{"世界落点", "425.0", "495.0", "声呐", "米钓点", "99:99", "饵一"} {
+	for _, banned := range []string{"世界落点", "425.0", "495.0", "声呐", "米钓点", "99:99", "饵一", "阶梯", "理论", "条/小时"} {
 		if strings.Contains(reply, banned) {
-			t.Fatalf("spot or builtin bait leaked into reply (%q): %s", banned, reply)
+			t.Fatalf("spot/gain/builtin bait leaked into reply (%q): %s", banned, reply)
 		}
 	}
 	// 海图区/声呐区/米钓点一律不播报。
@@ -85,7 +85,7 @@ func TestFishQueryReplyNeverShowsSpot(t *testing.T) {
 func TestFishQueryReplyNoPlanStillShowsFavoriteBaits(t *testing.T) {
 	result := &FishQueryResponse{}
 	got := formatFishQueryReply("红白锦鲤", result, []string{"玉米", "红虫"})
-	want := "红白锦鲤\n喜爱饵：玉米、红虫\n当前地图、当前条件没有可行方案，可指定其他地图。"
+	want := "红白锦鲤\n喜爱饵：玉米、红虫\n信息仅供参考"
 	if got != want {
 		t.Fatalf("no-plan reply = %q; want %q", got, want)
 	}
@@ -100,11 +100,11 @@ func TestFishQueryReplyLimitedAndNoInventedCoordinate(t *testing.T) {
 		result.Plans = append(result.Plans, FishQueryPlan{MapName: "测试湖", BaitName: "饵", RigType: 1, RigName: "浮钓", Chance: .001, TheoreticalPerHour: .36, Action: "drift"})
 	}
 	got := formatFishQueryReply("河鲈", result, []string{"喜爱饵"})
-	if strings.Contains(got, "4.") || !strings.Contains(got, "3. 浮钓·顺水漂流 · 理论 0.36条/小时") ||
-		!strings.Contains(got, "仅列出当前条件下有可行方案的钓法。") ||
-		strings.Contains(got, "参考点") || strings.Contains(got, "落点") || strings.Contains(got, "内置") ||
-		strings.Contains(got, "喜爱饵：饵\n") {
-		t.Fatalf("too many plans, unnecessary fields or invented position: %s", got)
+	if !strings.Contains(got, "喜爱饵：喜爱饵") || !strings.Contains(got, "【手杆】") ||
+		!strings.HasSuffix(got, "\n信息仅供参考") ||
+		strings.Contains(got, "4.") || strings.Contains(got, "理论") || strings.Contains(got, "条/小时") ||
+		strings.Contains(got, "参考点") || strings.Contains(got, "落点") || strings.Contains(got, "喜爱饵：饵\n") {
+		t.Fatalf("should only show favorite bait and rig: %s", got)
 	}
 }
 
@@ -114,16 +114,17 @@ func TestFishQueryHelpWaitNotice(t *testing.T) {
 	}
 }
 
-func TestFishQueryReplyExplanationsMovedToHelp(t *testing.T) {
+func TestFishQueryReplyNoLocationNoGain(t *testing.T) {
 	result := &FishQueryResponse{WaterFiltered: true, Plans: []FishQueryPlan{{MapName: "铜湖", BaitName: "饵", RigType: 5, CoordinateKind: "inland_region", Region: &FishQueryRegion{MinX: 40, MinZ: 48, MaxX: 48, MaxZ: 56}}}}
 	got := formatFishQueryReply("绯写锦鲤", result, []string{"喜爱饵"})
-	for _, detail := range []string{"粗筛", "不保证", "五点", "混合格", "预测", "单竿"} {
-		if strings.Contains(got, detail) || !strings.Contains(fishQueryHelp, detail) {
-			t.Fatalf("detail %q should be help-only: reply=%s help=%s", detail, got, fishQueryHelp)
+	// 地点、收益、计算说明一律不出现在回复里。
+	for _, detail := range []string{"铜湖", "40:48", "区域", "粗筛", "不保证", "五点", "混合格", "预测", "单竿", "理论", "条/小时"} {
+		if strings.Contains(got, detail) {
+			t.Fatalf("detail %q should not appear in reply: %s", detail, got)
 		}
 	}
-	if !strings.HasSuffix(got, "理论速率不计搏鱼、收鱼时间。") {
-		t.Fatalf("missing short rate explanation: %s", got)
+	if !strings.HasSuffix(got, "\n信息仅供参考") {
+		t.Fatalf("missing closing notice: %s", got)
 	}
 }
 
@@ -155,7 +156,8 @@ func TestFishQuerySpeciesOnlyCommands(t *testing.T) {
 	for _, text := range []string{"常见拟鲤", "常见拟鲤 rules-test", "查鱼 常见拟鲤", "查询 常见拟鲤 " + mapKey} {
 		t.Run(text, func(t *testing.T) {
 			got := s.fishQueryReply(t.Context(), sess, text)
-			if !strings.HasPrefix(got, "rules-test · 常见拟鲤\n喜爱饵：") || !strings.Contains(got, "\n【") || !strings.Contains(got, "\n1. ") || strings.Contains(got, "及以上") {
+			if !strings.HasPrefix(got, "常见拟鲤\n喜爱饵：") || !strings.Contains(got, "\n【") ||
+				!strings.HasSuffix(got, "\n信息仅供参考") || strings.Contains(got, "条/小时") || strings.Contains(got, "及以上") {
 				t.Fatalf("species-only query returned %q", got)
 			}
 		})

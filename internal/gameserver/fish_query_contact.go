@@ -21,16 +21,30 @@ const fishQueryContactName = "查鱼助手"
 func hSocialMembers(ctx *Ctx) ([]byte, bool) {
 	s := ctx.Sess.Srv
 	ids := []uint32{}
-	// 查鱼助手：总开关开启 + 有效会员才显示联系人。
-	if s.gearAssistantEnabled() && s.fishQueryMemberActive(context.Background(), ctx.Sess.Userid) {
-		ids = append(ids, uint32(fishQueryContactUID))
-	}
+	// 查鱼助手：所有玩家（含非会员）都可见并置顶在列表首位。
+	// 「只有会员能用」的门槛不放在显示层，而由 fishQueryReply 在真正查询时判定，
+	// 这样非会员也能看到助手入口、点进去才会收到「仅对会员开放」提示。
+	ids = append(ids, uint32(fishQueryContactUID))
 	// 钓具助手：后台总开关控制。
 	if s.gearAssistantEnabled() {
 		ids = append(ids, uint32(gearAssistantUID))
 	}
 	seen := map[int64]bool{fishQueryContactUID: true, gearAssistantUID: true}
-	// 回退：只返回在线会话玩家（全量角色会让离线玩家出现在聊天列表，副作用不可接受）。
+	// 所有角色（含离线）都出现在默认聊天框联系人列表：按官服口径下发全量可见联系人，
+	// 这样玩家之间即使不同时在线也能在列表里看到彼此并打开资料卡。
+	if s.DB != nil {
+		all, err := s.DB.AllProfileUIDs(context.Background())
+		if err == nil {
+			for _, uid := range all {
+				if uid > 0 && !seen[uid] {
+					ids = append(ids, uint32(uid))
+					seen[uid] = true
+				}
+			}
+			return encodeSocialTree(ctx, proto.U32Arr(ids))
+		}
+	}
+	// 回退：全量查询不可用时退回在线会话玩家。
 	players := make([]uint32, 0, len(s.sessions))
 	s.mu.Lock()
 	for _, peer := range s.sessions {
@@ -45,10 +59,7 @@ func hSocialMembers(ctx *Ctx) ([]byte, bool) {
 	return encodeSocialTree(ctx, proto.U32Arr(ids))
 }
 
-const fishQueryHelp = "发送：鱼名 [地图]\n例如：河鲈；河鲈 下通古斯卡河。\n鱼名支持拼音前缀，如“圆腹”或“yuanfu”；多种匹配直接取第一种。\n默认当前地图，按路亚、手杆、底钓分组列出钓法与理论速率；饵只播报管理后台「鱼饵偏好」里为该鱼设置的喜爱饵，不播报内置推荐饵、也不播报钓点位置。该鱼未设置喜爱饵时会明确提示。\n仅支持已核对坐标的地图；按当前条件估算理论条/小时，不含客户端等待、非实际鱼获。\n查询一般很快；复杂地图请预留约3秒，结果通过个人消息返回。\n\n" +
-	"计算说明：单竿、单饵无窝料，先粗筛区域再配饵，不保证全图最优。区域估算不逐点计算水深、底质和水流。\n" +
-	"水陆说明：有本图数据时做中心与四角五点粗筛，任一点有水即保留；混合格可能含陆地，不保证可达。缺少本图数据时未排除陆地。\n" +
-	"理论速率不含客户端等待、占竿、搏鱼、收鱼、重抛及落水就位保护，不是实际鱼获或未来一小时预测。"
+const fishQueryHelp = "发送：鱼名 [地图]\n例如：河鲈；河鲈 下通古斯卡河。\n鱼名支持拼音前缀，如“圆腹”或“yuanfu”；多种匹配直接取第一种。\n默认当前地图，只回该鱼在管理后台「鱼饵偏好」里设置的喜爱饵和可用钓组，不回内置推荐饵、地点和收益。该鱼未设置喜爱饵时会明确提示。信息仅供参考。\n查询一般很快；复杂地图请预留约3秒，结果通过个人消息返回。"
 const fishQueryMemberOnlyReply = "查鱼助手现在仅对高级会员开放，开通会员后即可使用。"
 
 // fishQueryMemberActive 直接读档案判定会员资格（限时未过期或永久），不依赖会话缓存。
@@ -136,54 +147,27 @@ func (s *Server) fishQueryReply(ctx context.Context, sess *Session, text string)
 	return formatFishQueryReply(fishZh, result, favoriteBaits)
 }
 
-// formatFishQueryReply 查鱼助手播报：
+// formatFishQueryReply 查鱼助手播报（只回喜爱饵与钓组，不透露地点/收益）：
 //   - 饵信息只读后台用户设置的喜爱饵 favoriteBaits，绝不播报内置推荐饵；
-//   - 不播报任何钓点（区域/落点/声呐区/米钓点/攻略参考点一律不输出）；
-//   - 保留钓法分组与理论速率。
+//   - 不输出任何地点（地图名、区域、落点、声呐区、米钓点、参考点）；
+//   - 不输出任何收益（理论条/小时、方案条数等）；
+//   - 末尾另起一行附「信息仅供参考」。
 func formatFishQueryReply(fishName string, result *FishQueryResponse, favoriteBaits []string) string {
 	fishName = fishQueryName(fishName)
-	// 喜爱饵是鱼级配置，与当前地图有没有钓法方案无关：先判它、先播报它。
+	const tail = "信息仅供参考"
 	if len(favoriteBaits) == 0 {
-		return fishName + "\n该鱼未设置喜爱饵（请在管理后台「鱼饵偏好」里设置爱吃饵）。"
+		return fishName + "\n该鱼未设置喜爱饵（请在管理后台「鱼饵偏好」里设置爱吃饵）。\n" + tail
 	}
-	if len(result.Plans) == 0 {
-		return fishName + "\n喜爱饵：" + strings.Join(favoriteBaits, "、") + "\n当前地图、当前条件没有可行方案，可指定其他地图。"
-	}
-	lines := []string{result.Plans[0].MapName + " · " + fishName}
-	lines = append(lines, "喜爱饵："+strings.Join(favoriteBaits, "、"))
-	missingFamily := false
+	lines := []string{fishName, "喜爱饵：" + strings.Join(favoriteBaits, "、")}
 	for _, family := range fishQueryFamilyRenderOrder {
-		plans := make([]FishQueryPlan, 0, fishQueryPlansPerFamily)
 		for _, plan := range result.Plans {
 			if fishQueryFamilyForRig(plan.RigType) == family {
-				plans = append(plans, plan)
+				lines = append(lines, "【"+family.label()+"】")
+				break
 			}
-		}
-		if len(plans) == 0 {
-			if family != fishQueryFamilyOther {
-				missingFamily = true
-			}
-			continue
-		}
-		if len(plans) > fishQueryPlansPerFamily {
-			plans = plans[:fishQueryPlansPerFamily]
-		}
-		lines = append(lines, "【"+family.label()+"】")
-		for i, plan := range plans {
-			method := fishQueryMethodLabel(plan)
-			if plan.Action == "drift" {
-				method += "·顺水漂流"
-			} else if plan.Action == "jig" {
-				method += "·阶梯"
-			}
-			lines = append(lines, fmt.Sprintf("%d. %s · 理论 %.2f条/小时", i+1, method, plan.TheoreticalPerHour))
 		}
 	}
-	if missingFamily {
-		lines = append(lines, "仅列出当前条件下有可行方案的钓法。")
-	}
-	lines = append(lines, "理论速率不计搏鱼、收鱼时间。")
-	return strings.Join(lines, "\n")
+	return strings.Join(lines, "\n") + "\n" + tail
 }
 
 func formatFishQueryRegion(r FishQueryRegion) string {

@@ -545,9 +545,10 @@ func TestFishQueryReplyRegionRange(t *testing.T) {
 	result := &FishQueryResponse{Plans: []FishQueryPlan{{MapName: "下通古斯卡河", BaitName: "蚯蚓", RigName: rigNameForType(1), Chance: .183, TheoreticalPerHour: 65.88,
 		RigType: 1, CoordinateKind: "inland_region", Region: &FishQueryRegion{MinX: 80, MinZ: 96, MaxX: 88, MaxZ: 104}}}}
 	reply := formatFishQueryReply("河鲈", result, []string{"红虫"})
-	if !strings.Contains(reply, "喜爱饵：红虫") || !strings.Contains(reply, "浮钓 · 理论 65.88条/小时") || !strings.Contains(reply, "理论速率不计搏鱼、收鱼时间。") ||
-		strings.Contains(reply, "80:96") || strings.Contains(reply, "世界落点") || strings.Contains(reply, "攻略") || strings.Contains(reply, "蚯蚓") {
-		t.Fatalf("region must not be shown, only favorite bait: %s", reply)
+	if !strings.Contains(reply, "喜爱饵：红虫") || !strings.Contains(reply, "【手杆】") || !strings.HasSuffix(reply, "\n信息仅供参考") ||
+		strings.Contains(reply, "80:96") || strings.Contains(reply, "世界落点") || strings.Contains(reply, "攻略") ||
+		strings.Contains(reply, "蚯蚓") || strings.Contains(reply, "理论") || strings.Contains(reply, "条/小时") || strings.Contains(reply, "下通古斯卡河") {
+		t.Fatalf("only favorite bait and rig should be shown: %s", reply)
 	}
 }
 

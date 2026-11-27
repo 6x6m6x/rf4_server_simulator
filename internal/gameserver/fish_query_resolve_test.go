@@ -69,7 +69,7 @@ func TestFishQueryPinyinReply(t *testing.T) {
 	for _, input := range []string{"常见", "changjian", "常见 rules-test", "CHANGJIAN " + mapKey} {
 		t.Run(input, func(t *testing.T) {
 			got := s.fishQueryReply(t.Context(), sess, input)
-			if !strings.HasPrefix(got, "rules-test · 常见拟鲤\n喜爱饵：") || !strings.Contains(got, "\n【") || !strings.Contains(got, "\n1. ") {
+			if !strings.HasPrefix(got, "常见拟鲤\n喜爱饵：") || !strings.Contains(got, "\n【") || !strings.HasSuffix(got, "\n信息仅供参考") {
 				t.Fatalf("prefix query did not return the full fish name: %q", got)
 			}
 		})

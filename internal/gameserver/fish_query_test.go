@@ -130,7 +130,7 @@ func TestFishQueryReadOnlyAndCatalog(t *testing.T) {
 	if _, err := s.resolveFishQuerySpecies(t.Context(), "%"); err == nil {
 		t.Fatal("punctuation matched a fish")
 	}
-	if reply := s.fishQueryReply(t.Context(), &Session{Srv: s, Userid: uid}, "常见拟鲤 "+mapKey); !strings.Contains(reply, "rules-test") || !strings.Contains(reply, "喜爱饵：") || strings.Contains(reply, "67:57") || strings.Contains(reply, "区域") {
+	if reply := s.fishQueryReply(t.Context(), &Session{Srv: s, Userid: uid}, "常见拟鲤 "+mapKey); !strings.Contains(reply, "喜爱饵：") || !strings.HasSuffix(reply, "\n信息仅供参考") || strings.Contains(reply, "67:57") || strings.Contains(reply, "区域") || strings.Contains(reply, "rules-test") {
 		t.Fatalf("reply=%s", reply)
 	}
 	req.Map = ""
@@ -276,8 +276,8 @@ func TestFishQueryReplyKeepsFamiliesBeforeGlobalLimit(t *testing.T) {
 	}
 
 	reply := s.fishQueryReply(t.Context(), &Session{Srv: s, Userid: uid}, "常见拟鲤 "+mapKey)
-	if !strings.HasPrefix(reply, "rules-test · 常见拟鲤\n") {
-		t.Fatalf("unexpected reply header: %s", reply)
+	if !strings.HasPrefix(reply, "常见拟鲤\n喜爱饵：") || !strings.HasSuffix(reply, "\n信息仅供参考") {
+		t.Fatalf("unexpected reply header/tail: %s", reply)
 	}
 	lastHeader := -1
 	for _, header := range []string{"【路亚】", "【手杆】", "【底钓】"} {
@@ -360,5 +360,32 @@ func TestFishQueryContactDoesNotTakeItems(t *testing.T) {
 	var qty int
 	if err := env.db.SQL.QueryRow(`SELECT qty FROM item WHERE guid=? AND uid=?`, item.GUID, env.sess.Userid).Scan(&qty); err != nil || qty != 3 {
 		t.Fatalf("assistant took player items: qty=%d err=%v", qty, err)
+	}
+}
+
+// 24/4 默认聊天框联系人：查鱼助手对所有玩家可见并置顶；所有角色（含离线）都在列表。
+func TestSocialMembersAllPlayersAndAssistantPinned(t *testing.T) {
+	s, db := newProgressSrv(t)
+	const caller int64 = 1000001
+	const offline int64 = 2000002 // 建档但从不建立会话 = 离线玩家
+	if _, err := db.EnsureProfile(t.Context(), caller); err != nil { t.Fatal(err) }
+	if _, err := db.EnsureProfile(t.Context(), offline); err != nil { t.Fatal(err) }
+	sess := newMailTestSession(t, s, 1, caller)
+	env := &dlineTestEnv{srv: s, db: db, sess: sess.sess}
+	members := env.invoke(t, 24, 4, proto.Args524(proto.U32(0), proto.StrVal("")))
+	if members.Kind != proto.KindU32Arr || len(members.Items) < 3 {
+		t.Fatalf("unexpected members: %+v", members)
+	}
+	// 查鱼助手置顶首位（对所有玩家可见，不再依赖会员）。
+	if members.Items[0].Num != uint64(fishQueryContactUID) {
+		t.Fatalf("查鱼助手未置顶: first=%+v", members.Items[0])
+	}
+	seenCaller, seenOffline := false, false
+	for _, it := range members.Items {
+		if it.Num == uint64(caller) { seenCaller = true }
+		if it.Num == uint64(offline) { seenOffline = true }
+	}
+	if !seenCaller || !seenOffline {
+		t.Fatalf("联系人缺少玩家(含离线): caller=%v offline=%v members=%+v", seenCaller, seenOffline, members)
 	}
 }
