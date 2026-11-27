@@ -329,6 +329,45 @@ func (s *Server) channelPeers(channelID string) []*Session {
 	return out
 }
 
+// chatPeers 返回公聊的广播目标集合，规则是「公共频道互通、自建私人频道隔离」：
+//
+//   - 发送者在公共频道：广播给**所有公共频道**的在线会话。中国频道、国际频道、
+//     其他地图频道都是公开频道，玩家之间理应能互相看到发言；此前按频道名精确
+//     隔离会让同服玩家在公共频道里也互相收不到。
+//   - 发送者在私人频道（玩家 24/6 自建、或常驻的"羊村"）：只广播给**同一私人
+//     频道**的会话，不串到公共频道，也不串到其他私人频道。
+//
+// 只读会话频道状态，不区分 id 形态（公共主频道已由 normalizeChatChannelName 归一）。
+func (s *Server) chatPeers(sess *Session) []*Session {
+	if s == nil || sess == nil {
+		return nil
+	}
+	self := sessChannel(sess)
+	selfPrivate := self.Private
+	selfID := normalizeChatChannelName(self.Name)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]*Session, 0, len(s.sessions))
+	for _, peer := range s.sessions {
+		if peer == nil || peer.Closed() {
+			continue
+		}
+		peerCh := sessChannel(peer)
+		if selfPrivate {
+			// 私人频道：仅同频道可见。
+			if peerCh.Private && normalizeChatChannelName(peerCh.Name) == selfID {
+				out = append(out, peer)
+			}
+			continue
+		}
+		// 公共频道：所有公共频道互通（私人频道不接收公共公聊）。
+		if !peerCh.Private {
+			out = append(out, peer)
+		}
+	}
+	return out
+}
+
 // sweepEmptyPrivateChannels 回收无人在线的自建私人频道。
 // 快照精选的常驻频道（Persistent）保留，否则"羊村"会在没人时被删掉，
 // 之后就再也加入不了。会话断开、切频道后调用。

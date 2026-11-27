@@ -288,6 +288,37 @@ func TestChannelPeersNormalizesMainChannelIDForms(t *testing.T) {
 	}
 }
 
+// addPrivateChatSession 建一个位于私人频道（private=true）的会话。
+func addPrivateChatSession(t *testing.T, srv *Server, sid uint64, uid int64, channel string) *Session {
+	t.Helper()
+	sess := addChatSession(t, srv, sid, uid, channel)
+	sess.SetState("channel", map[string]any{
+		"name": channel, "region": "CN", "users": int64(1), "private": true,
+	})
+	return sess
+}
+
+// 公聊广播范围：公共频道之间互通，只隔离玩家自建私人频道。
+// 这是「聊天功能失败」的修复点——此前按频道名精确隔离，公共频道之间也互相看不到。
+func TestChatPeersPublicInterconnectPrivateIsolated(t *testing.T) {
+	srv := newChatTestServer(t)
+	cn := addChatSession(t, srv, 1, 1000001, "nav1_03")         // 中国频道（公共）
+	addChatSession(t, srv, 2, 1000002, "nav19_01[GL]")          // 国际频道（公共）
+	addChatSession(t, srv, 3, 1000003, "nav12_02")              // 其他地图公共频道
+	p1 := addPrivateChatSession(t, srv, 4, 1000004, "chat-1000004")
+	addPrivateChatSession(t, srv, 5, 1000005, "chat-1000005")   // 另一个自建私人频道
+	addPrivateChatSession(t, srv, 6, 1000006, "chat-1000004")   // 与 p1 同一个私人频道
+
+	// 公共频道发言：三个公共频道玩家互通，私人频道不接收。
+	if got := len(srv.chatPeers(cn)); got != 3 {
+		t.Fatalf("公共频道之间应互通（3 人），实得 %d", got)
+	}
+	// 私人频道发言：只与同一私人频道互通（p1 自己 + 同频道 1 人 = 2）。
+	if got := len(srv.chatPeers(p1)); got != 2 {
+		t.Fatalf("自建私人频道只应同频道互通（2 人），实得 %d", got)
+	}
+}
+
 // 主频道 id 归一化规则：所有「中国频道」的形态都收敛到快照 nav19_01[CN]。
 func TestNormalizeChatChannelName(t *testing.T) {
 	cases := map[string]string{

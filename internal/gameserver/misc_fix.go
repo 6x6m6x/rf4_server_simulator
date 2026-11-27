@@ -810,12 +810,15 @@ func hSocialPublic(ctx *Ctx) ([]byte, bool) {
 	// 带 [CN] 或 sessChannel 默认名都不匹配当前标签页而被静默丢弃；空串
 	// 无条件放行（与 pushChatProbe 同一结论，2026-11-04 反编译+对照实证）。
 	loc := ""
-	// 公聊只广播给**同一频道**的在线会话：主频道之间、主频道与私人频道之间
-	// 都互不串聊。此前广播给全服所有人，导致两个玩家无论在哪个频道都能对话。
+	// 公聊广播范围：公共频道之间互通（中国频道/国际频道/其他地图频道都能互相看到），
+	// 只隔离玩家自建私人频道（含常驻"羊村"）。按频道名精确隔离会让同服玩家在
+	// 公共频道里也互相收不到，这是聊天失败的根因。
 	srv := ctx.Sess.Srv
-	channelName := sessChannel(ctx.Sess).Name
-	peers := srv.channelPeers(channelName)
-	users := uint32(srv.channelOnlineCount(channelName))
+	peers := srv.chatPeers(ctx.Sess)
+	users := uint32(len(peers))
+	if users < 1 {
+		users = 1
+	}
 	for _, sess := range peers {
 		sess.Push(24, 27, buildChatEchoPush(loc, msg, uint64(ctx.Sess.Userid), users))
 	}
