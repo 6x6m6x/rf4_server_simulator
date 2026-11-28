@@ -434,6 +434,15 @@ func (s *Server) cafeTemplatesFromPool(ctx context.Context, level string, now in
 		}
 		// 槽位周期/相位在生成时固定写入，同一槽位各 variant 一致，取首条即可。
 		period, phase := cands[0].PeriodSeconds, cands[0].PhaseSeconds
+		// 用户补丁：老玩家库残留旧版本候选池行（period_seconds=0）会在这里整数除零
+		// panic，导致整个咖啡厅订单加载失败、任务显示为空。旧行按默认周期兜底，
+		// 相位非法则归零，保证每个槽位仍能产出订单。
+		if period <= 0 {
+			period = 3600
+		}
+		if phase < 0 || phase >= period {
+			phase = 0
+		}
 		cycle := int64(0)
 		if now >= phase {
 			cycle = (now - phase) / period

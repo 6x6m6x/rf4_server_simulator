@@ -897,11 +897,15 @@ func (s *Server) StartAdminSubscriber(db *store.DB, stop <-chan struct{}) {
 		return
 	}
 	// 首次启动（迁移后候选池为空）自动生成一次，避免首日仍走旧 JSON 逻辑。
-	if levels, err := db.CafePoolLevels(context.Background()); err == nil && len(levels) == 0 {
+	// 用户补丁：老玩家库残留旧版本无效行（period=0）也会触发重建——这类行会让
+	// 订单读取除零 panic、咖啡厅任务为空（沃尔霍夫河/苏拉河反馈即此因）。
+	levels, err := db.CafePoolLevels(context.Background())
+	needRebuild := err == nil && (len(levels) == 0 || db.CafePoolHasInvalidRows(context.Background()))
+	if needRebuild {
 		if _, err := s.RegenerateCafeBountyPool(context.Background()); err != nil {
-			s.log.Warn("咖啡厅悬赏候选池首次生成失败，将回退旧逻辑", "err", err)
+			s.log.Warn("咖啡厅悬赏候选池生成失败，将回退旧逻辑", "err", err)
 		} else {
-			s.log.Info("咖啡厅悬赏候选池首次生成完成")
+			s.log.Info("咖啡厅悬赏候选池生成完成（含老库无效行修复）")
 		}
 	}
 	go func() {

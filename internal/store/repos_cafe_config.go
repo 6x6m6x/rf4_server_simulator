@@ -461,6 +461,18 @@ func scanCafePool(rows *sql.Rows) ([]CafeBountyPoolRow, error) {
 	return out, rows.Err()
 }
 
+// CafePoolHasInvalidRows 报告候选池里是否存在旧版本残留的无效行
+// （period_seconds<=0 或 phase>=period）。老玩家库里这类行会让订单读取除零 panic，
+// 咖啡厅任务显示为空；启动时据此触发一次重建，把旧行替换为合法周期。
+func (d *DB) CafePoolHasInvalidRows(ctx context.Context) bool {
+	var n int
+	if err := d.SQL.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM cafe_bounty_pool WHERE period_seconds<=0 OR phase_seconds<0 OR phase_seconds>=period_seconds`).Scan(&n); err != nil {
+		return false
+	}
+	return n > 0
+}
+
 // CafePoolLevels 返回已生成候选池的全部水域。
 func (d *DB) CafePoolLevels(ctx context.Context) ([]string, error) {
 	rows, err := d.SQL.QueryContext(ctx, `SELECT DISTINCT level FROM cafe_bounty_pool ORDER BY level`)

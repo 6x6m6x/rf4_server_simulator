@@ -390,3 +390,48 @@ func TestBountyInBand(t *testing.T) {
 		t.Fatalf("t>1 应钳制: %d", got)
 	}
 }
+
+// TestCafePoolOldInvalidRowsNoPanic：老玩家库残留旧版本候选池（period_seconds=0）
+// 曾导致订单读取整数除零 panic，沃尔霍夫河/苏拉河咖啡厅任务显示为空。
+// 新逻辑对非法周期兜底为默认周期，保证所有槽位仍能出单。
+func TestCafePoolOldInvalidRowsNoPanic(t *testing.T) {
+	srv, db := newStaticRigTestServer(t)
+	defer db.Close()
+	ctx := context.Background()
+	for _, level := range []string{"level_005_volhov", "level_008_sura_river"} {
+		t.Run(level, func(t *testing.T) {
+			// 模拟老库：该水域候选池整批写成旧版 period=0。
+			db.SQL.ExecContext(ctx, `DELETE FROM cafe_bounty_pool WHERE level=?`, level)
+			rows, err := db.CafeBountyPoolByLevel(ctx, "level_001_lake")
+			if err != nil || len(rows) == 0 {
+				// 其它水域也无池时，先重建一次拿合法模板。
+				srv.RegenerateCafeBountyPool(ctx)
+				rows, _ = db.CafeBountyPoolByLevel(ctx, "level_001_lake")
+			}
+			for _, r := range rows {
+				r.Level, r.PeriodSeconds, r.PhaseSeconds = level, 0, 0
+				db.SQL.ExecContext(ctx, `INSERT INTO cafe_bounty_pool
+                    (level,slot,variant,species,name_zh,weight_g,grade,rarity,is_rare,is_giant,gold_cents,subsidy_cents,period_seconds,phase_seconds,quantity)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+					r.Level, r.Slot, r.Variant, r.Species, r.NameZH, r.WeightG, r.Grade, r.Rarity,
+					cafeBoolInt(r.IsRare), cafeBoolInt(r.IsGiant), r.GoldCents, r.SubsidyCents, 0, 0, r.Quantity)
+			}
+			defer func() {
+				if rec := recover(); rec != nil {
+					t.Fatalf("老库 period=0 触发 panic: %v", rec)
+				}
+			}()
+			tpls, err := srv.cafeTemplates(ctx, level, 1730000000)
+			if err != nil || len(tpls) == 0 {
+				t.Fatalf("老库非法行也应出单: templates=%d err=%v", len(tpls), err)
+			}
+		})
+	}
+}
+
+func cafeBoolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
