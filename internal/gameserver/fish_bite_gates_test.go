@@ -120,7 +120,13 @@ func TestBiteGateLayerFloor(t *testing.T) {
 }
 
 func TestFloatBiteGateWeightsAcrossMeasuredWaterLayers(t *testing.T) {
+	// 用户补丁 skip_layer_factor 默认跳过水层地板；本用例锁官方原生 G2 权重曲线，
+	// 临时关补丁开关，结束后恢复（不改断言）。
 	s := &Server{}
+	if s.tunCache == nil { s.tunCache = map[string]float64{} }
+	s.tunCache["skip_layer_factor"] = 0
+	s.tunAt = time.Now() // 防止 ensureTunablesLocked 判定过期而重建缓存
+	defer func() { s.tunCache["skip_layer_factor"] = 1 }()
 	weight := func(c fishRollContext, species string, floor float64) float64 {
 		t.Helper()
 		keys, w := s.applyBiteGates(context.Background(), []string{species}, []float64{1}, c,

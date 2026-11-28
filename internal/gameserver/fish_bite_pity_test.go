@@ -48,7 +48,11 @@ func TestPityDistributionFloor(t *testing.T) {
 
 // 保底杂口：G2 水层地板在 pityEnv 下抬到 ≥0.05；G1 拟饵硬门不受 pityEnv 影响。
 func TestPityLayerFloorButNotLureGate(t *testing.T) {
+	// 用户补丁 skip_layer_factor 默认跳过水层地板；本用例锁官方原生 G2 地板语义，
+	// 临时关补丁开关，结束后恢复（不改断言）。
 	s, db := seedBaitRuleTest(t)
+	setBaitRuleTunable(t, s, "skip_layer_factor", "0")
+	defer setBaitRuleTunable(t, s, "skip_layer_factor", "1")
 	if _, err := db.SQL.Exec(`INSERT OR REPLACE INTO fish_ecology(fish_key,layer_min,layer_pref,layer_max,temp_min_c,temp_pref_c,temp_max_c,diel_mask,diet_json)
 		VALUES('frog',0.9,0.95,1.0,0,20,40,15,'{"lure":0.2,"worm":1.0}')`); err != nil {
 		t.Fatal(err)

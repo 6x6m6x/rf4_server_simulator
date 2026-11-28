@@ -1,4 +1,4 @@
-import { h, api, apiList, fmt, relTime, timeText, icon, navigate, section, badge, empty, pageHead, btn, render, setPageCleanup, debounce } from '../core.js';
+import { h, api, apiList, fmt, relTime, timeText, icon, navigate, section, badge, empty, pageHead, btn, callout, render, setPageCleanup, debounce } from '../core.js';
 import { auditLabel } from '../labels.js';
 import { updateBanner } from '../main.js';
 
@@ -68,8 +68,13 @@ export default async function dashboard() {
   };
   drawLogs();
 
+  // 上游新功能：默认口令/密钥的告警在总览直接可见（匿名也会下发 warnings）。
+  const warnings = Array.isArray(d.warnings) ? d.warnings : [];
   return h('div', { class: 'page' },
     pageHead('总览', '服务器现在的情况，以及常用功能的入口。', btn('刷新', () => render(), 'sm', { icon: 'refresh' })),
+    warnings.length ? callout('warn', h('div', {},
+      h('b', { text: '安全提醒：管理后台仍是默认凭据或默认密钥' }),
+      h('ul', { class: 'bullets', style: { margin: '6px 0 0', paddingLeft: '18px' } }, ...warnings.map((x) => h('li', { text: x }))))) : null,
     h('div', { class: 'grid-4', style: { marginBottom: '16px' } },
       stats.map(([k, v, s]) => h('div', { class: 'card stat' }, h('div', { class: 'k', text: k }), h('div', { class: 'v', text: fmt(v) }), h('div', { class: 's', text: s })))),
     h('div', { class: 'grid-2', style: { gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)', alignItems: 'start' } },

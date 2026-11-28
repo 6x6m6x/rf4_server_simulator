@@ -36,9 +36,6 @@ INSERT OR IGNORE INTO cafe_slot_period(kind, min_seconds, max_seconds, label) VA
     ('trophy',   43200, 43200, '奖杯位 12 小时'),
     ('normal',    3600, 14400, '普通/达标位 1~4 小时');
 
--- 已建库补列：候选池行增加交单数量，旧行默认 1 条。
-ALTER TABLE cafe_bounty_pool ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1;
-
 -- 旧池行没有新配置（数量/周期仍为旧值），清空让 gameserver 启动时按新配置自动重建。
 -- 候选池是纯派生数据，可安全重建。
 DELETE FROM cafe_bounty_pool;

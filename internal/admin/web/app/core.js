@@ -1,4 +1,6 @@
 // RF4 管理后台 · 核心：DOM 构建、请求、路由、提示、弹窗、表单模型。
+// i18n：文本节点在进入 DOM 时就按当前语言取值（en 缺值回退 zh）——移植自上游新功能，UI 样式仍为我方定稿。
+import { tr, translateDom } from './i18n.js';
 // 页面模块只依赖这里导出的东西，不直接碰全局状态。
 
 // ---------- DOM ----------
@@ -8,7 +10,7 @@ export function h(tag, attrs, ...children) {
     for (const [k, v] of Object.entries(attrs)) {
       if (v === undefined || v === null || v === false) continue;
       if (k === 'class') el.className = v;
-      else if (k === 'text') el.textContent = v;
+      else if (k === 'text') el.textContent = tr(v);
       else if (k === 'html') el.innerHTML = v;
       else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
       else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v);
@@ -24,7 +26,7 @@ function append(el, children) {
   for (const c of children) {
     if (c === null || c === undefined || c === false) continue;
     if (Array.isArray(c)) append(el, c);
-    else el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    else el.append(c instanceof Node ? c : document.createTextNode(tr(String(c))));
   }
 }
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -510,6 +512,7 @@ export async function render() {
     const node = await def.render(params);
     if (current !== key) return;
     root.replaceChildren(node);
+    translateDom(root); // i18n：动态页面按当前语言翻译（中文模式原样返回）
     window.scrollTo(0, 0);
   } catch (e) {
     if (e && e.status === 401) return;

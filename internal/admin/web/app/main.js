@@ -1,5 +1,6 @@
 // RF4 管理后台入口：登录、框架、导航。各页面按需加载。
 import { h, $, api, post, icon, getToken, setToken, onAuth, route, render, navigate, toast, errText, parseHash } from './core.js';
+import { translateDom, startLangObserver } from './i18n.js'; // i18n：移植自上游，中文模式原样返回
 
 // 导航结构即信息架构：按「管理员想做的事」分组，而不是按后端模块。
 const NAV = [
@@ -151,6 +152,8 @@ async function boot() {
   const notice = noticeBar();
   app.replaceChildren(
     h('div', { class: 'shell' }, sidebar(), h('main', { class: 'main' }, notice || '', h('div', { id: 'updateSlot' }), h('div', { id: 'view' }))));
+  translateDom(document.body); // i18n：框架建好后翻译一次，动态内容由 observer 兜底
+  startLangObserver();
   updateBanner(me.update);
   render();
 }

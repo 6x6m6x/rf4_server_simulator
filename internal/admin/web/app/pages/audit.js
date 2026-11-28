@@ -1,5 +1,5 @@
 // 操作记录：后台每一次修改，可按类型筛选。
-import { h, apiList, pageHead, badge, empty, searchBox, timeText, relTime } from '../core.js';
+import { h, apiList, pageHead, badge, empty, searchBox, timeText, relTime, getToken, callout } from '../core.js';
 import { auditLabel, AUDIT_LABELS } from '../labels.js';
 
 const KINDS = [
@@ -11,6 +11,10 @@ const KINDS = [
 ];
 
 export default async function audit() {
+  // 上游安全修复：审计记录必须登录（含管理员账号与操作明细）。
+  if (!getToken()) return h('div', { class: 'page' },
+    pageHead('操作记录', '后台每一次修改，可按类型筛选。'),
+    callout('info', '审计记录包含管理员账号与操作明细，需登录后查看。'));
   const list = await apiList('/api/audit?limit=200');
   let kind = 'all', q = '';
   const tbody = h('tbody');
