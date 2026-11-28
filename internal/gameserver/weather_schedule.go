@@ -1,6 +1,7 @@
 package gameserver
 
 import (
+	"context"
 	crand "crypto/rand"
 	"encoding/binary"
 	"encoding/json"
@@ -10,6 +11,8 @@ import (
 	"math/rand"
 	"sort"
 	"sync"
+
+	"rf4server/internal/store"
 )
 
 const (
@@ -47,6 +50,28 @@ type mapWeatherProfile struct {
 	offset int64  // 关闭随机时保留模板的日偏移
 	random bool   // true=kind 与最高温由启动随机序列提供
 	slots  []weatherDaySlot
+
+	// control 后台按图覆盖（天气权重/温度区间/风速档位）。指针便于运行时热更新：
+	// 保存配置后整体替换这个指针，判鱼与地图下发立刻读到新值，无需重启。
+	controlMu sync.RWMutex
+	control   *weatherControlRuntime
+}
+
+// weatherControlRuntime 是一张图展开后的运行时天气控制参数。
+type weatherControlRuntime struct {
+	enabled     bool
+	tempBase    float64 // 0=沿用模板区间；>0=覆盖温度基准线
+	tempSwing   float64 // 0=沿用模板区间；>0=覆盖上下浮动
+	windMode    string  // normal=<5m/s, windy=>=5m/s, calm=0
+	kindWeights []float64
+}
+
+// defaultWeatherControl 返回与历史行为一致的控制值。
+func defaultWeatherControl() *weatherControlRuntime {
+	// windMode 留空 = 不覆盖风速（沿用地图模板气候）；只有后台显式保存该图才设档位。
+	return &weatherControlRuntime{
+		kindWeights: []float64{3, 2, 1, 1, 1, 1},
+	}
 }
 
 var (
@@ -54,7 +79,26 @@ var (
 	weatherProfiles       map[string]*mapWeatherProfile
 	weatherProfilesLoaded bool
 	weatherScheduleOpts   WeatherScheduleOptions
+
+	// buildWeatherControls 是构建天气序列时按图读取的后台覆盖；由 server 启动
+	// 装配时注入，进程启动后通过 RefreshWeatherControls 热更新（只更新 profile.control）。
+	buildWeatherControlsMu sync.RWMutex
+	buildWeatherControls   map[string]*weatherControlRuntime
 )
+
+// SetWeatherControlsForBuild 注入启动期天气覆盖，供 InitWeatherSchedule 读取。
+func SetWeatherControlsForBuild(controls map[string]*weatherControlRuntime) {
+	buildWeatherControlsMu.Lock()
+	buildWeatherControls = controls
+	buildWeatherControlsMu.Unlock()
+}
+
+func currentWeatherControlForBuild(mapKey string) *weatherControlRuntime {
+	buildWeatherControlsMu.RLock()
+	c := buildWeatherControls[mapKey]
+	buildWeatherControlsMu.RUnlock()
+	return c
+}
 
 func mapWeatherProfiles() map[string]*mapWeatherProfile {
 	weatherProfilesMu.RLock()
@@ -188,8 +232,14 @@ func buildWeatherProfilesWithSeed(opts WeatherScheduleOptions, seed uint64) map[
 		p.rangeC = high - low
 		if opts.Randomize {
 			p.random = true
-			p.slots = randomWeatherSlots(p.days, cycle, seed^p.seed)
-			assignRandomTemperatures(p.days, p.slots, seed^p.seed)
+			// 生成序列时优先用后台按图权重；缺省仍是官服 3:2:1:1:1:1。
+			w := weatherControlFromStore(store.WeatherControl{}, false)
+			if s := currentWeatherControlForBuild(key); s != nil {
+				w = s
+			}
+			p.control = w
+			p.slots = randomWeatherSlotsWith(p.days, cycle, seed^p.seed, w.kindWeights)
+			assignWeatherTemperatures(p.days, p.slots, seed^p.seed, w)
 		} else {
 			p.offset = int64(p.seed % uint64(len(p.days)))
 			p.slots = templateWeatherSlots(p.days)
@@ -211,15 +261,48 @@ func templateWeatherSlots(days []irNode) []weatherDaySlot {
 // randomWeatherSlots 为每张图独立按权重抽取天气 kind。
 // 温度、风和水位取模板中距离该 kind 最近的模板日，避免晴天继承暴雨日的参数。
 func randomWeatherSlots(days []irNode, cycle int, seed uint64) []weatherDaySlot {
+	return randomWeatherSlotsWith(days, cycle, seed, nil)
+}
+
+// weatherKindWeightsF 是默认权重的浮点副本。
+var weatherKindWeightsF = func() []float64 {
+	out := make([]float64, len(weatherKindWeights))
+	for i, w := range weatherKindWeights {
+		out[i] = float64(w)
+	}
+	return out
+}()
+
+const float64SliceLen = 6
+
+// randomWeatherSlotsWith 按指定权重抽取天气 kind。
+func randomWeatherSlotsWith(days []irNode, cycle int, seed uint64, weights []float64) []weatherDaySlot {
+	// weights=nil 或恰好等于默认 → 走原 Intn 逻辑，序列与历史完全一致。
+	custom := len(weights) == weatherKindCount && !isDefaultKindWeights(weights)
 	rng := rand.New(rand.NewSource(int64(seed)))
 	slots := make([]weatherDaySlot, cycle)
 	for i := range slots {
-		kind := int64(randomWeatherKind(rng))
+		kind := int64(0)
+		if custom {
+			kind = int64(randomWeatherKindWith(rng, weights))
+		} else {
+			kind = int64(randomWeatherKind(rng))
+		}
 		slots[i] = weatherDaySlot{kind: kind, template: nearestWeatherTemplate(days, kind)}
 	}
 	return slots
 }
 
+func isDefaultKindWeights(weights []float64) bool {
+	for i := range weights {
+		if math.Abs(weights[i]-weatherKindWeightsF[i]) > 1e-9 {
+			return false
+		}
+	}
+	return true
+}
+
+// randomWeatherKind 官服默认权重路径，保留原 Intn 抽取以保证历史天气序列完全一致。
 func randomWeatherKind(rng *rand.Rand) int {
 	total := 0
 	for _, weight := range weatherKindWeights {
@@ -231,6 +314,25 @@ func randomWeatherKind(rng *rand.Rand) int {
 			return kind
 		}
 		r -= weight
+	}
+	return weatherKindCount - 1
+}
+
+// randomWeatherKindWith 按给定权重抽天气 kind（权重已归一为任意非负浮点）。
+func randomWeatherKindWith(rng *rand.Rand, weights []float64) int {
+	total := 0.0
+	for _, weight := range weights {
+		total += math.Max(0, weight)
+	}
+	if total <= 0 {
+		return weatherKindCount - 1
+	}
+	r := rng.Float64() * total
+	for kind, weight := range weights {
+		r -= math.Max(0, weight)
+		if r < 0 {
+			return kind
+		}
 	}
 	return weatherKindCount - 1
 }
@@ -382,14 +484,38 @@ func (p *mapWeatherProfile) hour(day, hour int64) irNode {
 			temp = high
 		}
 	}
-	setWeatherFloat(&n, 2, temp)
+	// 温度统一取整（°C），不留小数。
+	setWeatherFloat(&n, 2, math.Round(temp))
 	setWeatherFloat(&n, 3, cloud)
 	setWeatherFloat(&n, 4, rain)
 	setWeatherFloat(&n, 5, thunder)
 	// 预报与小时计划都使用 km/h；吃口入口再换算为 m/s。
-	setWeatherFloat(&n, 6, math.Max(0, wind+(nextWind-wind)*fraction))
+	baseWind := math.Max(0, wind+(nextWind-wind)*fraction)
+	baseWind = weatherWindWithControl(p, day, hour, baseWind)
+	setWeatherFloat(&n, 6, baseWind)
 	setWeatherInt(&n, 9, water)
 	return n
+}
+
+// weatherWindWithControl 按后台风速档位覆盖小时风速（入参 km/h，返回 km/h）。
+// 5 m/s（=18 km/h）是大风/正常分界线：normal 落在 [0,5)，windy 落在 [5,12)，
+// calm 固定 0（客户端显示无风）。同一天同一小时用固定 seed，保证预报与判鱼一致、
+// 且客户端刷新后不会跳变。
+func weatherWindWithControl(p *mapWeatherProfile, day, hour int64, templateKMH float64) float64 {
+	c := weatherControlOf(p)
+	if c == nil || c.windMode == "" {
+		return templateKMH
+	}
+	const divideKMH = 18.0 // 5 m/s
+	rng := rand.New(rand.NewSource(int64(p.seed ^ uint64(day*24+hour) ^ 0x5eed)))
+	switch c.windMode {
+	case "calm":
+		return 0
+	case "windy":
+		return divideKMH + rng.Float64()*7*3.6 // 5~12 m/s
+	default: // normal
+		return rng.Float64() * divideKMH // 0~5 m/s 不含 5
+	}
 }
 
 // reanchorWeather 沿用地图协议容器，填入昨天至未来六天的统一天气计划。
@@ -440,4 +566,161 @@ func reanchorWeather(root *irNode, nowUnix int64) {
 		}
 	}
 	hours.Items = items
+}
+
+// weatherControlFromStore 把一张图的后台配置展开成运行时参数（含缺省）。
+func weatherControlFromStore(w store.WeatherControl, ok bool) *weatherControlRuntime {
+	c := defaultWeatherControl()
+	if !ok || !w.Enabled {
+		return c
+	}
+	c.enabled = true
+	c.tempBase, c.tempSwing = w.TempBase, w.TempSwing
+	switch w.WindMode {
+	case "calm", "normal", "windy":
+		c.windMode = w.WindMode
+	}
+	if len(w.KindWeights) == 6 {
+		weights := make([]float64, 6)
+		total := 0.0
+		for i, v := range w.KindWeights {
+			if v < 0 {
+				v = 0
+			}
+			weights[i] = float64(v)
+			total += weights[i]
+		}
+		if total > 0 {
+			c.kindWeights = weights
+		}
+	}
+	return c
+}
+
+// RefreshWeatherControls 从玩家库读取天气覆盖并热更新到所有地图 profile。
+// 由后台保存配置 / reload_weather 管理指令调用；无 DB 时全部回退默认。
+func (s *Server) RefreshWeatherControls(ctx context.Context) error {
+	maps := mapWeatherProfiles()
+	var rows []store.WeatherControl
+	if s != nil && s.DB != nil {
+		var err error
+		rows, err = s.DB.WeatherControls(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	byKey := make(map[string]store.WeatherControl, len(rows))
+	has := make(map[string]bool, len(rows))
+	for _, w := range rows {
+		byKey[w.MapKey], has[w.MapKey] = w, true
+	}
+	weatherProfilesMu.RLock()
+	defer weatherProfilesMu.RUnlock()
+	for key, p := range maps {
+		w, ok := byKey[key], has[key]
+		c := weatherControlFromStore(w, ok)
+		p.controlMu.Lock()
+		p.control = c
+		p.controlMu.Unlock()
+	}
+	return nil
+}
+
+// weatherControlOf 读一张图的运行时控制（并发安全，缺省返回默认）。
+func weatherControlOf(p *mapWeatherProfile) *weatherControlRuntime {
+	if p == nil {
+		return defaultWeatherControl()
+	}
+	p.controlMu.RLock()
+	c := p.control
+	p.controlMu.RUnlock()
+	if c == nil {
+		return defaultWeatherControl()
+	}
+	return c
+}
+
+// assignWeatherTemperatures 在默认随机游走基础上应用后台温度覆盖：
+//   - tempBase>0：以基准线取代模板区间中值；
+//   - tempSwing>0：以 ±swing 取代模板区间半宽；
+//   - 所有最高温取整（°C），不再有小数。
+// 保留原有的闭环限幅，避免相邻日跳变与漂移。
+func assignWeatherTemperatures(days []irNode, slots []weatherDaySlot, seed uint64, c *weatherControlRuntime) {
+	if c == nil || (c.tempBase <= 0 && c.tempSwing <= 0) {
+		assignRandomTemperatures(days, slots, seed)
+		roundSlotHighs(slots)
+		return
+	}
+	low, high, ok := weatherTemplateHighRange(days)
+	if !ok || len(slots) == 0 {
+		return
+	}
+	low, high = float64(math.Round(low)), float64(math.Round(high))
+	mean := (low + high) / 2
+	if c.tempBase > 0 {
+		mean = float64(math.Round(c.tempBase))
+	}
+	half := (high - low) / 2
+	if c.tempSwing > 0 {
+		half = float64(math.Round(c.tempSwing))
+	}
+	step := math.Max(1, half/2)
+	swing := math.Max(1, math.Min(3, step)) // 单日游走上限，仍保留平滑
+	n := len(slots)
+	minHigh, maxHigh := mean-half, mean+half
+	rng := rand.New(rand.NewSource(int64(seed)))
+	cur := clampFloat(mean+(rng.Float64()*2-1)*half*0.6, minHigh, maxHigh)
+	first := cur
+	slots[0].high = math.Round(cur)
+	for i := 1; i < n; i++ {
+		next := cur + (rng.Float64()*2-1)*swing + (mean-cur)*0.18
+		next = clampFloat(next, cur-swing, cur+swing)
+		closeWindow := swing * float64(n-i)
+		next = clampFloat(next, math.Max(minHigh, first-closeWindow), math.Min(maxHigh, first+closeWindow))
+		next = clampFloat(next, cur-swing, cur+swing)
+		slots[i].high = math.Round(next)
+		cur = next
+	}
+}
+
+// roundSlotHighs 把默认随机温度也取整，保证"温度无小数"口径统一。
+func roundSlotHighs(slots []weatherDaySlot) {
+	for i := range slots {
+		slots[i].high = math.Round(slots[i].high)
+	}
+}
+
+// loadWeatherControls 在 DB 装配后调用：读取后台天气覆盖，注入 build 参数并
+// 重建序列（让天气权重/温度区间生效），随后热更新 profile.control（风速档位）。
+// 未配置或 DB 不可用时保持现有序列，不改变历史行为。
+func (s *Server) loadWeatherControls() {
+	if s == nil || s.DB == nil {
+		return
+	}
+	rows, err := s.DB.WeatherControls(context.Background())
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("天气控制读取失败，沿用默认天气", "err", err)
+		}
+		return
+	}
+	controls := make(map[string]*weatherControlRuntime, len(rows))
+	for _, w := range rows {
+		controls[w.MapKey] = weatherControlFromStore(w, true)
+	}
+	SetWeatherControlsForBuild(controls)
+	if s.cfg.Weather.Randomize {
+		if _, err := InitWeatherSchedule(WeatherScheduleOptions{
+			Randomize: true,
+			CycleDays: s.cfg.Weather.CycleDays,
+		}); err != nil && s.log != nil {
+			s.log.Warn("天气序列重建失败，沿用原序列", "err", err)
+		}
+	}
+	if err := s.RefreshWeatherControls(context.Background()); err != nil && s.log != nil {
+		s.log.Warn("天气控制热更新失败", "err", err)
+	}
+	if s.log != nil {
+		s.log.Info("天气控制已加载", "maps", len(controls))
+	}
 }

@@ -1074,6 +1074,11 @@ func (s *Server) execAdminCmd(cmd *AdminCommand) {
 		s.log.Info("管理指令：下一杆指定鱼", "uid", cmd.UID, "species", f.Species, "weight", f.WeightG, "grade", f.Grade)
 	case "broadcast":
 		s.log.Info("管理指令：广播（占位）", "text", cmd.Text)
+	case "reload_weather":
+		// 后台保存天气控制后：重建序列 + 热更新风速档位 + 重发在线玩家地图 dob。
+		s.loadWeatherControls()
+		sent := s.pushWeatherRefresh()
+		s.log.Info("管理指令：天气控制已刷新", "pushed", sent)
 	case "reload_tunables":
 		s.tunMu.Lock()
 		s.tunCache = nil // 强制下次读取刷新

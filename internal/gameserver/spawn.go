@@ -282,6 +282,16 @@ func (s *Server) buildSpawnLocatorBody(uid int64, levelKey, scene string, nowUni
 
 // buildMapDobBody 1/12 place：指定地图 key 的 dob(205 dobfogbcggd)。
 func (s *Server) buildMapDobBody(uid int64, key string, nowUnix int64) ([]byte, error) {
+	dobVal, err := s.buildMapDobValue(uid, key, nowUnix)
+	if err != nil {
+		return nil, err
+	}
+	return proto.EncodeValue(dobVal, s.Table())
+}
+
+// buildMapDobValue 构造地图 dob 的 proto.Value（1/12 响应体）。
+// 天气控制热更新后，管理指令用它在不重进图的情况下给在线玩家重发地图数据。
+func (s *Server) buildMapDobValue(uid int64, key string, nowUnix int64) (*proto.Value, error) {
 	maps, err := loadMapDefs()
 	if err != nil {
 		return nil, err
@@ -299,11 +309,7 @@ func (s *Server) buildMapDobBody(uid int64, key string, nowUnix int64) ([]byte, 
 	}
 	s.markTripPlaceDob(uid, key, &dob)
 	reanchorWeather(&dob, nowUnix)
-	dobVal, err := irToValue(&dob)
-	if err != nil {
-		return nil, err
-	}
-	return proto.EncodeValue(dobVal, s.Table())
+	return irToValue(&dob)
 }
 
 // buildTravelBody 构造 1/14 旅行响应：

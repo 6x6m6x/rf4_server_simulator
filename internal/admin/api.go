@@ -122,6 +122,9 @@ func NewServer(cfg config.Admin, db *store.DB, log logger, webFS fs.FS) *Server 
 	mux.HandleFunc("POST /api/fish/spawn_mode", auth(s.handleSpawnModeSet))
 	mux.HandleFunc("GET /api/fish/bite_mode", s.handleBiteModeGet) // 匿名只读：不登录也能看
 	mux.HandleFunc("POST /api/fish/bite_mode", auth(s.handleBiteModeSet))
+	mux.HandleFunc("GET /api/weather/maps", s.handleWeatherMapList)      // 匿名只读
+	mux.HandleFunc("PUT /api/weather/control", auth(s.handleWeatherControlSave))
+	mux.HandleFunc("DELETE /api/weather/control", auth(s.handleWeatherControlReset))
 	mux.HandleFunc("GET /api/hooks/profiles", s.handleHookProfiles) // 匿名只读：不登录也能看
 	mux.HandleFunc("POST /api/hooks/profiles", auth(s.handleHookProfileSave))
 	mux.HandleFunc("GET /api/bait/prefs", s.handleBaitPrefs)           // 匿名只读：不登录也能看

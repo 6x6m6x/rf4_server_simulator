@@ -5,7 +5,7 @@ import { h, $, api, post, icon, getToken, setToken, onAuth, route, render, navig
 const NAV = [
   { group: null, items: [['dashboard', '总览', 'home']] },
   { group: '玩家', items: [['players', '玩家', 'users'], ['mail', '发邮件', 'mail']] },
-  { group: '钓鱼玩法', items: [['rules', '玩法规则', 'rules'], ['waters', '水域与鱼种', 'water'], ['bait', '鱼饵偏好', 'bait'], ['hooks', '鱼钩', 'hook'], ['tuning', '数值调整', 'sliders']] },
+  { group: '钓鱼玩法', items: [['rules', '玩法规则', 'rules'], ['weather', '天气调节', 'fish'], ['waters', '水域与鱼种', 'water'], ['bait', '鱼饵偏好', 'bait'], ['hooks', '鱼钩', 'hook'], ['tuning', '数值调整', 'sliders']] },
   { group: '经济', items: [['shop', '商店', 'store'], ['cafe', '咖啡厅订单', 'coffee']] },
   { group: '系统', items: [['audit', '操作记录', 'list'], ['changelog', '更新日志', 'doc'], ['about', '关于', 'info']] },
 ];
@@ -14,6 +14,7 @@ const PAGES = {
   players: () => import('./pages/players.js'),
   mail: () => import('./pages/mail.js'),
   rules: () => import('./pages/rules.js'),
+  weather: () => import('./pages/weather.js'),
   waters: () => import('./pages/waters.js'),
   bait: () => import('./pages/bait.js'),
   hooks: () => import('./pages/hooks.js'),

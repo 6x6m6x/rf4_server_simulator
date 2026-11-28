@@ -28,6 +28,9 @@ func (s *Server) attachDB(db *store.DB, log *slog.Logger) {
 	if db == nil {
 		return
 	}
+	// 天气控制：DB 装配后读取后台按图配置，重建天气序列（权重/温度区间）
+	// 并热更新 profile.control（风速档位）。未配置时行为与历史一致。
+	s.loadWeatherControls()
 	s.loadFightCurves()
 	if n, err := s.ensureFishEcology(context.Background()); err != nil {
 		s.log.Warn("鱼种生态档案初始化失败", "err", err)
