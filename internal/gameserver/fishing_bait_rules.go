@@ -575,43 +575,6 @@ func (s *Server) filterFishBaitSet(loc string, ids []string, keys []string, weig
 		if weights[i] <= 0 {
 			continue
 		}
-		// ★用户爱吃饵优先（2026-11-28 重写）：单一判定入口给出四级 verdict。
-		// 区域是第一级硬门槛，淡水区域外直接 blocked 剔除，绝不回退内置链路。
-		userRule, rot, verdict := s.evaluateUserBait(ctx, c, loc, key, names[key], baits, now)
-		switch verdict {
-		case userBaitBlocked, userBaitMiss:
-			// 区域外（淡水）或钩上没用户点名的饵 → 本鱼不咬。
-			continue
-		case userBaitHit:
-			activeGroup := activeBaitGroup(rot, now)
-			strictRotation := activeGroup != nil && rot.mode == "strict"
-			best := 0.0
-			preferred := 0
-			for _, b := range baits {
-				if !rotationKeepsBait(activeGroup, strictRotation, b) {
-					continue
-				}
-				if baitBlockedByRule(userRule, c, b) || !baitAllowedByRule(userRule, b, activeGroup) {
-					continue
-				}
-				// 满档且高于内置规则最高档（内置 full ≤1.5，这里基准 1.725）。
-				score := maxBaitPreference
-				if activeGroup != nil {
-					score *= rotationScoreMultiplier(activeGroup, b)
-				}
-				preferred++
-				best = math.Max(best, score)
-			}
-			if best > 0 {
-				if preferred > 1 {
-					best *= 1 + math.Min(0.15, 0.05*float64(preferred-1))
-				}
-				outKeys = append(outKeys, key)
-				outWeights = append(outWeights, weights[i]*best)
-			}
-			continue
-		}
-		// userBaitNone：用户没设规则 → 下面整条内置链路不变。
 		if strictExact {
 			r, ok := lookupStrictFishBaitRule(names[key])
 			if !ok || !ruleConditionAllows(r, c) {

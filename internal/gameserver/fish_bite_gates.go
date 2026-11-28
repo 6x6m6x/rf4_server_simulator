@@ -3,7 +3,6 @@ package gameserver
 import (
 	"context"
 	"math"
-	"time"
 )
 
 // 硬性鱼口资格门（tunable bite_gate_enabled，默认关）。
@@ -160,42 +159,6 @@ func (s *Server) applyBiteGates(ctx context.Context, keys []string, wts []float6
 		}
 	}
 
-	// ★用户爱吃饵优先（补丁）：只有挪威海豁免 G1/G-diet 食性硬门；
-	// 其它水域仅改饵权，硬门仍按内置规则判定。用户未指定的饵在饵权层
-	// 已给 0 权重，这里只决定「命中用户饵时是否还要过内置食性门」。
-	type northSeaUserBaitState struct {
-		has bool
-		hit bool
-	}
-	userBait := map[string]northSeaUserBaitState{}
-	gateNow := c.now
-	if gateNow.IsZero() {
-		gateNow = time.Now()
-	}
-	if isNorthSeaBaitLoc(c.loc, statLoc) && len(c.baits) > 0 {
-		var hookBaits []ruleBait
-		for _, id := range c.baits {
-			if b, ok := s.cachedBaitDefinition(ctx, c, id); ok {
-				hookBaits = append(hookBaits, b)
-			}
-		}
-		if len(hookBaits) > 0 && names == nil {
-			if n, ok := s.cachedFishNames(ctx, c); ok {
-				names = n
-			}
-		}
-		for _, key := range keys {
-			if zh, ok := names[key]; ok {
-				_, _, verdict := s.evaluateUserBait(ctx, c, statLoc, key, zh, hookBaits, gateNow)
-				// blocked（淡水区域外）与 miss（无用户饵）都算“有用户规则但不吃”，
-				// 让下面的硬门走用户独占分支直接剔除，不回退内置食性门。
-				if verdict == userBaitHit || verdict == userBaitMiss || verdict == userBaitBlocked {
-					userBait[key] = northSeaUserBaitState{has: true, hit: verdict == userBaitHit}
-				}
-			}
-		}
-	}
-
 	outKeys := make([]string, 0, len(keys))
 	outWts := make([]float64, 0, len(wts))
 	for i, key := range keys {
@@ -204,23 +167,15 @@ func (s *Server) applyBiteGates(ctx context.Context, keys []string, wts []float6
 		}
 		p := s.cachedFishEcology(ctx, c, key)
 		diet := fishEcologyJSONMap(p.DietJSON)
-		if st, ok := userBait[key]; ok {
-			// 用户独占：没点到用户指定的饵，这条鱼一律不吃。
-			if !st.hit {
+		if baits.lure && diet["lure"] < cfg.lureDietMin {
+			continue
+		}
+		if dietReady {
+			score := s.biteGateDietScore(ctx, key, diet, baits.natural, names, companion, local, c, cfg)
+			if score <= 0 {
 				continue
 			}
-			// 命中用户饵：跳过内置 G1/G-diet 食性门。
-		} else {
-			if baits.lure && diet["lure"] < cfg.lureDietMin {
-				continue
-			}
-			if dietReady {
-				score := s.biteGateDietScore(ctx, key, diet, baits.natural, names, companion, local, c, cfg)
-				if score <= 0 {
-					continue
-				}
-				wts[i] *= score
-			}
+			wts[i] *= score
 		}
 		w := wts[i]
 		if layerKnown {

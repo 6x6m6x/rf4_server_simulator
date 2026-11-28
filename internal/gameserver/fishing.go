@@ -2125,10 +2125,8 @@ func (s *Server) rollFishPoolsWithRules(loc string, gearCapKg float64, bonus fis
 	// ★2026-11-28：内置鱼池兜底此前完全没经过 fish_zone 名册——当静态名册
 	// 解析失败、但后台鱼种区域已配置时，会捞出区域外的鱼，表现为区域设置失效。
 	// 这里补上与主链路同款的区域过滤（同样在硬门后、饵权前）。
-	statLoc := ""
 	if s.DB != nil {
-		statLoc = s.cachedResolveStatLoc(s.dbCtx(), c, loc)
-		if statLoc != "" {
+		if statLoc := s.cachedResolveStatLoc(s.dbCtx(), c, loc); statLoc != "" {
 			if zk, zw, hit := s.applyFishZoneRoster(s.dbCtx(), statLoc, keys, wts, c); hit {
 				keys, wts = zk, zw
 				if len(keys) == 0 {
@@ -2142,9 +2140,7 @@ func (s *Server) rollFishPoolsWithRules(loc string, gearCapKg float64, bonus fis
 	}
 	interest := 1.0
 	if strict && c.baits != nil {
-		// ★2026-11-28：传解析后的 statLoc（原来传空串）——否则用户饵权判定
-		// 查不到 fish_zone 名册，淡水区外的鱼会被用户饵权照常钓出。
-		keys, wts = s.filterFishBaitSet(statLoc, c.baits, keys, wts, c.now, c)
+		keys, wts = s.filterFishBaitSet("", c.baits, keys, wts, c.now, c)
 		if len(keys) == 0 {
 			return nil
 		}
