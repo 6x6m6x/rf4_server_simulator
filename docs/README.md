@@ -9,6 +9,8 @@
 - [Docker 单容器部署](../DOCKER.md)：单镜像构建、必需配置与数据卷。
 - [客户端兼容性检查清单](client-checklist.md)：登录、会话、玩家状态、钓鱼、物品与经济等回归项。
 - [管理控制台](admin-console.md)：launcher 内嵌 Control Deck 的功能与 API。
+- [奖赏奖杯与卡牌发放使用手册](reward-trophies.md)：后台按中文名/ID 搜索并发放奖杯、
+  卡牌副本规则、幂等与审计说明。
 - [静态数据隔离](static_runtime_isolation.md)：可写玩家库与只读静态目录的运行时隔离模型。
 
 ## 架构与实现

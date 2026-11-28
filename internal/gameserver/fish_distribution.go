@@ -96,17 +96,27 @@ func distributionMultiplier(area, species string, now time.Time, share float64) 
 }
 
 func applyFishDistribution(loc string, keys []string, weights []float64, c fishRollContext) {
+	applyFishDistributionWithBase(loc, keys, weights, weights, c)
+}
+
+// applyFishDistributionWithBase 用 base 计算鱼种在本图/本时段的份额（缺席判定线），
+// 用 weights 承载散布倍率。★2026-11-28：用户喜爱饵（bait allow）会把 weights
+// 抬到满档 1.725，若直接用它算 share，稀有鱼的缺席线会被对折，原本「本时段
+// 本格不来」的鱼变成常驻——表现为后台鱼种区域/分布设置失效。鱼种区域份额
+// 属于分布语义，必须与饵权加成隔离：饵权只决定「开口的鱼里选哪条」，
+// 不决定「这条鱼今天来不来」。base==weights 时行为与原版完全一致。
+func applyFishDistributionWithBase(loc string, keys []string, weights, base []float64, c fishRollContext) {
 	area := fishArea(loc, c)
 	total := 0.0
-	for _, w := range weights {
+	for _, w := range base {
 		if w > 0 {
 			total += w
 		}
 	}
 	for i, key := range keys {
 		share := 0.0
-		if total > 0 && weights[i] > 0 {
-			share = weights[i] / total
+		if i < len(base) && total > 0 && base[i] > 0 {
+			share = base[i] / total
 		}
 		m := distributionMultiplier(area, key, c.now, share)
 		// 保底杂口：本时段本格散布为 0 的鱼保底 0.15，避免连续空杆死寂；

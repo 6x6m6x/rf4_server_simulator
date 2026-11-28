@@ -248,37 +248,42 @@ function profile(p, reload, setDirty) {
   });
   // 按需发放奖赏面板奖杯：普通「发物品」不会出现在奖赏面板 3/16，必须走专用发放。
   const trophyChosen = new Set();
-  const trophySearch = h('input', { class: 'input', placeholder: '搜索奖杯名称或 ID，如 15条稀有鱼、statuette_', style: { flex: '1', minWidth: '220px' } });
-  const trophyList = h('div', { class: 'table-wrap', style: { maxHeight: '300px', overflow: 'auto', marginTop: '10px' } });
+  const trophySearch = h('input', { class: 'input', placeholder: '搜索中文名 / 英文名 / 物品 ID，如 稀有鱼、鲤鱼、statuette_', style: { flex: '1', minWidth: '260px' } });
+  const trophyList = h('div', { class: 'table-wrap', style: { maxHeight: '480px', overflow: 'auto', marginTop: '10px' } });
   const trophyCount = h('span', { class: 'muted small' });
   let trophyCache = [];
   function drawTrophies() {
     const q = trophySearch.value.trim().toLowerCase();
-    const list = trophyCache.filter((t) => !q || (t.name + ' ' + t.item_id).toLowerCase().includes(q));
-    trophyCount.textContent = `已选 ${trophyChosen.size} / 显示 ${list.length} 种`;
-    if (!list.length) { trophyList.replaceChildren(empty('没有匹配的奖杯', '换个关键词试试。')); return; }
-    let lastGroup = '';
-    const rows = [];
+    const list = trophyCache.filter((t) => !q || [t.name_zh, t.name_en, t.name, t.item_id].filter(Boolean).join(' ').toLowerCase().includes(q));
+    trophyCount.textContent = `已选 ${trophyChosen.size} / 显示 ${list.length} / 共 ${trophyCache.length} 种`;
+    if (!list.length) { trophyList.replaceChildren(empty('没有匹配的奖杯', '试试中文名、英文名或 item_id；点「显示全部」清空搜索。')); return; }
+    // 按 group 聚合，一个分组只出一次标题（后端已按 group+item_id 排序，这里再做一次兜底）。
+    const groups = new Map();
     for (const t of list) {
-      if (t.group !== lastGroup) {
-        lastGroup = t.group;
-        rows.push(h('tr', {}, h('td', { colspan: 3, class: 'small muted', style: { paddingTop: '10px', fontWeight: '600' }, text: t.group })));
-      }
-      rows.push(h('tr', {},
-        h('td', { style: { width: '36px' } }, h('input', { type: 'checkbox', checked: trophyChosen.has(t.item_id), style: { width: '16px', height: '16px', accentColor: 'var(--accent)', cursor: 'pointer' }, onchange: (e) => { e.target.checked ? trophyChosen.add(t.item_id) : trophyChosen.delete(t.item_id); trophyCount.textContent = `已选 ${trophyChosen.size} / 显示 ${list.length} 种`; } })),
-        h('td', {}, h('div', { text: t.name || t.item_id })),
-        h('td', { class: 'mono muted small', text: t.item_id })));
+      if (!groups.has(t.group)) groups.set(t.group, []);
+      groups.get(t.group).push(t);
     }
-    trophyList.replaceChildren(h('table', { class: 'table' }, h('thead', {}, h('tr', {}, h('th', {}), h('th', { text: '奖杯' }), h('th', { text: '物品 ID' }))), h('tbody', {}, rows)));
+    const rows = [];
+    for (const [group, items] of groups) {
+      rows.push(h('tr', {}, h('td', { colspan: 3, class: 'small muted', style: { paddingTop: '10px', fontWeight: '600' }, text: `${group}（${items.length}）` })));
+      for (const t of items) {
+        rows.push(h('tr', {},
+          h('td', { style: { width: '36px' } }, h('input', { type: 'checkbox', checked: trophyChosen.has(t.item_id), style: { width: '16px', height: '16px', accentColor: 'var(--accent)', cursor: 'pointer' }, onchange: (e) => { e.target.checked ? trophyChosen.add(t.item_id) : trophyChosen.delete(t.item_id); trophyCount.textContent = `已选 ${trophyChosen.size} / 显示 ${list.length} / 共 ${trophyCache.length} 种`; } })),
+          h('td', {}, h('div', { text: t.name || t.item_id }), t.name_zh ? h('div', { class: 'muted small', text: t.name_en || t.item_id }) : h('div', { class: 'muted small', text: '无中文名 · 可用 ID 搜索' })),
+          h('td', { class: 'mono muted small', text: t.item_id })));
+      }
+    }
+    trophyList.replaceChildren(h('table', { class: 'table' }, h('thead', {}, h('tr', {}, h('th', {}), h('th', { text: '奖杯（中文名优先）' }), h('th', { text: '物品 ID' }))), h('tbody', {}, rows)));
   }
   trophySearch.addEventListener('input', debounce(drawTrophies, 200));
   apiList('/api/reward-trophies').then((r) => { trophyCache = r.items || []; drawTrophies(); }).catch((e) => trophyList.replaceChildren(empty('奖杯清单读取失败', errText(e))));
   const trophySection = section({
     title: '按需发放奖赏奖杯',
-    desc: '奖赏面板（3/16）里的奖杯必须用专用通道发放才会显示——普通「发物品」只会进背包、面板看不到。勾选需要的奖杯后一键发放，已拥有的会自动跳过。',
+    desc: '奖赏面板（3/16）里的奖杯必须用专用通道发放才会显示——普通「发物品」只会进背包、面板看不到。默认展示全部奖杯，可按中文名、英文名或物品 ID 搜索；勾选后一键发放，已拥有的会自动跳过。详细用法见服务端 docs/reward-trophies.md。',
     actions: trophyCount,
     body: h('div', { class: 'stack' },
       h('div', { class: 'row', style: { gap: '8px' } }, trophySearch,
+        btn('显示全部', () => { trophySearch.value = ''; drawTrophies(); }, 'sm'),
         btn('发放选中', async () => {
           const ids = [...trophyChosen];
           if (!ids.length) { toast('请先勾选要发放的奖杯', 'bad'); return; }
@@ -290,9 +295,9 @@ function profile(p, reload, setDirty) {
   // 一键发放所有卡牌（卡牌 + 卡册）。
   const cardSection = section({
     title: '一键发放所有卡牌',
-    desc: '把全部集换卡牌与卡册发到该玩家背包（已拥有的自动跳过）。卡牌会按鱼种自动填充卡面数据，发放后约 2 秒可在游戏里看到。',
+    desc: '把全部集换卡牌与卡册发到该玩家背包（已达到需求的自动跳过）。同一鱼种被多本卡册共用时会按最大需求数发足副本（最多 4 张），方便分别入册；卡牌会按鱼种自动填充卡面数据，发放后约 2 秒可在游戏里看到。',
     body: h('div', {}, btn('发放所有卡牌与卡册', async () => {
-      if (!(await confirmDialog({ title: `给「${p.name}」发放所有卡牌？`, desc: '全部卡牌与卡册（约 280 种）逐个发放，已拥有的跳过。此操作会记入后台操作日志。', confirm: '全部发放' }))) return;
+      if (!(await confirmDialog({ title: `给「${p.name}」发放所有卡牌？`, desc: '全部卡牌与卡册（约 280 种）逐个发放，共用鱼种按卡册需求补足副本，已满足的跳过。此操作会记入后台操作日志。', confirm: '全部发放' }))) return;
       try { await post('/api/players/cards/grant-all', { uid: p.uid }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
     }, 'primary sm', { icon: 'plus' })),
   });

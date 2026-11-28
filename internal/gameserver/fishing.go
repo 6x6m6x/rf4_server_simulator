@@ -1528,6 +1528,10 @@ func (s *Server) rollFishFromDBWithRules(loc, bait string, gearCapKg float64, bo
 		}
 	}
 	interests := map[string]float64{}
+	// ★2026-11-28：散布份额必须用「饵权加成之前」的区域名册权重算，
+	// 否则用户喜爱饵的满档 1.725 会把稀有鱼的缺席线对折，让后台鱼种
+	// 区域/分布设置看起来失效。饵权只改鱼之间的相对选择，不改来不来。
+	var distBase []float64
 	if strict {
 		base := map[string]float64{}
 		for i, key := range keys {
@@ -1538,14 +1542,19 @@ func (s *Server) rollFishFromDBWithRules(loc, bait string, gearCapKg float64, bo
 			markEmpty("饵料规则（strict）")
 			return nil
 		}
+		distBase = make([]float64, len(keys))
 		for i, key := range keys {
 			interests[key] = math.Min(1, wts[i]/base[key]/maxBaitPreference)
+			distBase[i] = base[key]
 		}
 	}
 	// Regional queries capture bait/skill weights once, then apply the same
 	// distribution function to every region without rerunning the DB pipeline.
 	if distribution && (c.query == nil || !c.query.regional) {
-		applyFishDistribution(statLoc, keys, wts, c)
+		if distBase == nil {
+			distBase = wts
+		}
+		applyFishDistributionWithBase(statLoc, keys, wts, distBase, c)
 		if !slices.ContainsFunc(wts, func(w float64) bool { return w > 0 }) {
 			markEmpty("分布散布（本时段本格无鱼）")
 			return nil
@@ -2111,6 +2120,19 @@ func (s *Server) rollFishPoolsWithRules(loc string, gearCapKg float64, bonus fis
 		keys, wts = s.applyBiteGates(s.dbCtx(), keys, wts, c, gate, "")
 		if len(keys) == 0 {
 			return nil
+		}
+	}
+	// ★2026-11-28：内置鱼池兜底此前完全没经过 fish_zone 名册——当静态名册
+	// 解析失败、但后台鱼种区域已配置时，会捞出区域外的鱼，表现为区域设置失效。
+	// 这里补上与主链路同款的区域过滤（同样在硬门后、饵权前）。
+	if s.DB != nil {
+		if statLoc := s.cachedResolveStatLoc(s.dbCtx(), c, loc); statLoc != "" {
+			if zk, zw, hit := s.applyFishZoneRoster(s.dbCtx(), statLoc, keys, wts, c); hit {
+				keys, wts = zk, zw
+				if len(keys) == 0 {
+					return nil
+				}
+			}
 		}
 	}
 	if !slices.ContainsFunc(wts, func(w float64) bool { return w > 0 }) {

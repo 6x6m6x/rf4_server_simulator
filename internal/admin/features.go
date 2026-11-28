@@ -745,10 +745,16 @@ func (s *Server) handleCompleteAllQualifications(w http.ResponseWriter, r *http.
 }
 
 // handleRewardTrophyCatalog GET /api/reward-trophies
-// 奖赏面板 3/16 可发放的奖杯清单（category=72），按 item_id 稳定排序。
+// 奖赏面板 3/16 可发放的奖杯清单（category=72）。
+// 返回中文名（可能为空）、原文名（可能为空）、显示名（优先中文名，没名字回退 item_id）
+// 和物品 ID，后台可按中文名或 ID 搜索；无中文名的奖杯仍能按 ID 找到。
+// 默认展示全部，分组由 group 字段给出，按分组+item_id 稳定排序。
 func (s *Server) handleRewardTrophyCatalog(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.SQL.QueryContext(r.Context(), `
-		SELECT d.item_id, COALESCE(NULLIF(c.name_zh,''), NULLIF(c.name,''), d.item_id)
+		SELECT d.item_id,
+		       COALESCE(NULLIF(c.name_zh,''),'') AS name_zh,
+		       COALESCE(NULLIF(c.name,''),'') AS name_en,
+		       COALESCE(NULLIF(c.name_zh,''), NULLIF(c.name,''), d.item_id) AS display
 		FROM item_def d LEFT JOIN item_catalog c ON c.item_id=d.item_id
 		WHERE d.category=72 ORDER BY d.item_id`)
 	if err != nil {
@@ -758,18 +764,26 @@ func (s *Server) handleRewardTrophyCatalog(w http.ResponseWriter, r *http.Reques
 	defer rows.Close()
 	type trophy struct {
 		ItemID string `json:"item_id"`
-		Name   string `json:"name"`
+		Name   string `json:"name"`     // 显示名：中文名优先，无中文名用原文名，都没有用 item_id
+		NameZh string `json:"name_zh"` // 中文名，可能为空
+		NameEn string `json:"name_en"` // 原文名，可能为空
 		Group  string `json:"group"`
 	}
 	list := make([]trophy, 0, 128)
 	for rows.Next() {
 		var t trophy
-		if err := rows.Scan(&t.ItemID, &t.Name); err != nil {
+		if err := rows.Scan(&t.ItemID, &t.NameZh, &t.NameEn, &t.Name); err != nil {
 			continue
 		}
 		t.Group = rewardTrophyGroup(t.ItemID)
 		list = append(list, t)
 	}
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].Group != list[j].Group {
+			return list[i].Group < list[j].Group
+		}
+		return list[i].ItemID < list[j].ItemID
+	})
 	writeJSON(w, map[string]any{"items": list})
 }
 

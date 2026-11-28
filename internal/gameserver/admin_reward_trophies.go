@@ -2,6 +2,7 @@ package gameserver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -125,7 +126,48 @@ func (s *Server) adminGrantRewardTrophy(ctx context.Context, uid int64, itemID s
 	return true
 }
 
+// tradingCardDeckNeeds 统计每张卡牌被多少本卡册（category 82）需要。
+// 真实静态库里 65 张卡被 2~4 本卡册共用（如 card_s_orfe 被 4 本册引用），
+// 而一张卡实例同一时刻只能入一本册（trading_card_albums.go 的
+// "卡片已在其他卡册中" / "该鱼种已入册"），所以发卡必须按最大需求数给足副本，
+// 否则多本共享卡不可能同时集齐。
+func (s *Server) tradingCardDeckNeeds(ctx context.Context) map[string]int {
+	need := map[string]int{}
+	if s == nil || s.DB == nil {
+		return need
+	}
+	rows, err := s.DB.SQL.QueryContext(ctx, `SELECT attrs_json FROM item_def WHERE category=82`)
+	if err != nil {
+		return need
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			continue
+		}
+		var attrs struct {
+			Cards []string `json:"cjmjfnheidh"`
+		}
+		if err := json.Unmarshal([]byte(raw), &attrs); err != nil {
+			continue
+		}
+		seen := map[string]bool{}
+		for _, id := range attrs.Cards {
+			if id == "" || seen[id] {
+				continue // 同一册内重复引用只算一次
+			}
+			seen[id] = true
+			need[id]++
+		}
+	}
+	return need
+}
+
 // grantAllTradingCardsForAdmin 一键发放所有卡牌与卡册（category 78/82）。
+// ★2026-11-28 改进：卡牌按「被多少本卡册需要」补足副本（最多 4 份），
+// 而不是每种鱼只发 1 张——多本合集共用同一鱼种时，1 张卡无法满足全部册子。
+// 卡册仍每种 1 本；已拥有数量达到需求的自动跳过，重复执行幂等。
 // CreateItem 内部会调 initializeTradingItem 给卡牌填上鱼种数据，走的是官方同型路径。
 func (s *Server) grantAllTradingCardsForAdmin(uid int64) (cards, decks int) {
 	if s == nil || s.DB == nil || uid <= 0 {
@@ -141,23 +183,39 @@ func (s *Server) grantAllTradingCardsForAdmin(uid int64) (cards, decks int) {
 	list := make([]row, 0, 300)
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.id, &r.cat); err == nil { list = append(list, r) }
+		if err := rows.Scan(&r.id, &r.cat); err == nil {
+			list = append(list, r)
+		}
 	}
 	_ = rows.Close()
+	need := s.tradingCardDeckNeeds(ctx)
 	for _, r := range list {
+		target := 1
+		if r.cat == 78 {
+			if n := need[r.id]; n > target {
+				target = n // 共享卡给足副本，能同时入多本卡册
+			}
+		}
 		var have int64
 		if err := s.DB.SQL.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM item WHERE uid=? AND item_id=?`, uid, r.id).Scan(&have); err != nil || have > 0 {
-			continue // 已拥有跳过，保证幂等
-		}
-		it, err := s.CreateItem(ctx, uid, r.id, "backpack", 1)
-		if err != nil || it == nil {
-			s.log.Warn("管理发放卡牌失败", "uid", uid, "item", r.id, "err", err)
+			`SELECT COUNT(*) FROM item WHERE uid=? AND item_id=?`, uid, r.id).Scan(&have); err != nil {
 			continue
 		}
-		s.pushItemUpdate(uid, it)
-		if r.cat == 82 { decks++ } else { cards++ }
+		for have < int64(target) {
+			it, err := s.CreateItem(ctx, uid, r.id, "backpack", 1)
+			if err != nil || it == nil {
+				s.log.Warn("管理发放卡牌失败", "uid", uid, "item", r.id, "err", err)
+				break
+			}
+			s.pushItemUpdate(uid, it)
+			have++
+			if r.cat == 82 {
+				decks++
+			} else {
+				cards++
+			}
+		}
 	}
-	s.log.Info("管理指令：一键发放所有卡牌", "uid", uid, "cards", cards, "decks", decks)
+	s.log.Info("管理指令：一键发放所有卡牌（按卡册需求补足副本）", "uid", uid, "cards", cards, "decks", decks)
 	return cards, decks
 }

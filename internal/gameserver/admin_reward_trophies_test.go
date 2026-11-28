@@ -47,3 +47,34 @@ func TestAdminGrantAllCards(t *testing.T) {
 	c2, d2 := srv.grantAllTradingCardsForAdmin(uid)
 	if c2 != 0 || d2 != 0 { t.Fatalf("重复执行应全部跳过: %d/%d", c2, d2) }
 }
+
+// TestAdminGrantAllCardsSharedDeckCopies：多本卡册共用同一鱼种时，必须发足副本，
+// 否则一张卡只能入一本册，其余合集永远集不齐。
+func TestAdminGrantAllCardsSharedDeckCopies(t *testing.T) {
+	srv, db := newStaticRigTestServer(t)
+	defer db.Close()
+	ctx := context.Background()
+	const uid = int64(1000005)
+	if _, err := db.EnsureProfile(ctx, uid); err != nil { t.Fatal(err) }
+	need := srv.tradingCardDeckNeeds(ctx)
+	// 找一张被两本以上卡册引用的共享卡；静态库里 card_s_orfe 最多（4 本）。
+	shared := ""
+	maxNeed := 1
+	for id, n := range need {
+		if n > maxNeed { shared, maxNeed = id, n }
+	}
+	if shared == "" { t.Fatal("静态库应存在多卡册共享的卡牌") }
+	// 先手动发一张，验证一键发放会把副本补到需求数而非跳过。
+	if _, err := srv.CreateItem(ctx, uid, shared, "backpack", 1); err != nil { t.Fatal(err) }
+	srv.grantAllTradingCardsForAdmin(uid)
+	var have int
+	if err := db.SQL.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM item WHERE uid=? AND item_id=?`, uid, shared).Scan(&have); err != nil {
+		t.Fatal(err)
+	}
+	if have < maxNeed {
+		t.Fatalf("共享卡 %s 只有 %d 张，少于 %d 本卡册的需求", shared, have, maxNeed)
+	}
+	c2, d2 := srv.grantAllTradingCardsForAdmin(uid)
+	if c2 != 0 || d2 != 0 { t.Fatalf("补足后重复执行应全部跳过: %d/%d", c2, d2) }
+}
