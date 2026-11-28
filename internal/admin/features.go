@@ -699,3 +699,47 @@ func (s *Server) handleMailSend(w http.ResponseWriter, r *http.Request) {
 	_ = s.db.AuditLogWrite(r.Context(), adminOf(r), "mail_send", strings.Join(uidStrs, ","), string(detail))
 	writeJSON(w, map[string]any{"ok": true, "queued": len(clean)})
 }
+
+// handleCompleteAllAchievements POST /api/players/achievements/complete
+// 管理员专用：一键点亮指定玩家的 achievement_def 全表成就。走管理指令队列，
+// 由 gameserver 用权威规则写库并推送，约 2 秒内生效；admin 侧只校验 + 记审计。
+func (s *Server) handleCompleteAllAchievements(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UID int64 `json:"uid"`
+	}
+	if err := readJSON(r, &req); err != nil || req.UID <= 0 {
+		httpError(w, 400, "参数错误")
+		return
+	}
+	if err := s.db.QueuePush(r.Context(), mustJSON(map[string]any{
+		"op": "complete_all_achievements", "uid": req.UID,
+	})); err != nil {
+		httpError(w, 500, "写入发送队列失败: "+err.Error())
+		return
+	}
+	_ = s.db.AuditLogWrite(r.Context(), adminOf(r), "complete_achievements",
+		strconv.FormatInt(req.UID, 10), "all")
+	writeJSON(w, map[string]any{"ok": true, "queued": true})
+}
+
+// handleCompleteAllQualifications POST /api/players/qualifications/complete
+// 管理员专用：一键完成指定玩家全部资格任务（含活动分支、跳过缺口任务），
+// 由 gameserver 写库并补发分支奖杯。走管理指令队列，约 2 秒内生效。
+func (s *Server) handleCompleteAllQualifications(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UID int64 `json:"uid"`
+	}
+	if err := readJSON(r, &req); err != nil || req.UID <= 0 {
+		httpError(w, 400, "参数错误")
+		return
+	}
+	if err := s.db.QueuePush(r.Context(), mustJSON(map[string]any{
+		"op": "complete_all_qualifications", "uid": req.UID,
+	})); err != nil {
+		httpError(w, 500, "写入发送队列失败: "+err.Error())
+		return
+	}
+	_ = s.db.AuditLogWrite(r.Context(), adminOf(r), "complete_qualifications",
+		strconv.FormatInt(req.UID, 10), "all")
+	writeJSON(w, map[string]any{"ok": true, "queued": true})
+}

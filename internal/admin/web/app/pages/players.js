@@ -232,6 +232,20 @@ function profile(p, reload, setDirty) {
         } catch (e) { toast(errText(e), 'bad'); }
       }, 'primary sm', { icon: 'mail' }))),
   });
+  // 成就与资格：管理员专用的一键完成。走管理指令队列，约 2 秒生效。
+  const progressSection = section({
+    title: '成就与资格',
+    desc: '管理员专用：一键点亮该玩家的全部成就、完成全部资格任务（含活动分支）。仅改游戏进度，不发物品；资格完成会自动补发对应奖杯。约 2 秒生效，玩家无需重登。',
+    body: h('div', { class: 'row', style: { gap: '10px', flexWrap: 'wrap' } },
+      btn('一键完成所有成就', async () => {
+        if (!(await confirmDialog({ title: `点亮「${p.name}」的全部成就？`, desc: '会把 achievement_def 里所有成就标记为已完成并点亮图标（约 130 项）。此操作会记入后台操作日志。', confirm: '一键完成' }))) return;
+        try { await post('/api/players/achievements/complete', { uid: p.uid }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
+      }, 'primary sm', { icon: 'check' }),
+      btn('一键完成所有资格任务', async () => {
+        if (!(await confirmDialog({ title: `完成「${p.name}」的全部资格任务？`, desc: '所有永久与活动资格分支的每一条任务都会补满进度并标记完成，同时自动补发对应分支奖杯。此操作会记入后台操作日志。', confirm: '一键完成' }))) return;
+        try { await post('/api/players/qualifications/complete', { uid: p.uid }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
+      }, 'primary sm', { icon: 'check' })),
+  });
   // 危险操作：彻底删除玩家。
   const dangerBlock = h('div', { style: { borderTop: '1px solid var(--line)', marginTop: '14px', paddingTop: '14px' } },
     h('h3', { class: 'small', style: { color: 'var(--bad)', margin: '0 0 6px' }, text: '危险操作' }),
@@ -256,7 +270,7 @@ function profile(p, reload, setDirty) {
       form.row({ key: 'bank', label: '银行存款', kind: 'float', min: 0 }, cents(p.bank))),
     h('div', {},
       h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '8px 0 10px' }, text: '会员' }),
-      h('div', { class: 'stack' }, h('div', { class: 'row' }, seg, expWrap), h('div', { class: 'muted small', text: hhText }))), ipSection, saySection, dangerBlock);
+      h('div', { class: 'stack' }, h('div', { class: 'row' }, seg, expWrap), h('div', { class: 'muted small', text: hhText }))), ipSection, saySection, progressSection, dangerBlock);
 }
 
 // ---------- 背包 ----------

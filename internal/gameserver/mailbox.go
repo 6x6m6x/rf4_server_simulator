@@ -1209,6 +1209,14 @@ func (s *Server) execAdminCmd(cmd *AdminCommand) {
 			sess.Push2_4SkillTree("admin refresh")
 		}
 		s.log.Info("管理指令：刷新技能面板", "uid", cmd.UID)
+	case "complete_all_achievements":
+		// 后台玩家概况页「一键完成所有成就」：管理员专用，点亮 achievement_def 全表。
+		n := s.completeAllAchievementsForAdmin(cmd.UID)
+		s.log.Info("管理指令：一键完成所有成就", "uid", cmd.UID, "newly", n)
+	case "complete_all_qualifications":
+		// 后台玩家概况页「一键完成所有资格任务」：管理员专用，含活动分支、跳过缺口任务。
+		n := s.completeAllQualificationsForAdmin(cmd.UID)
+		s.log.Info("管理指令：一键完成所有资格任务", "uid", cmd.UID, "rules", n)
 	default:
 		s.log.Warn("未知管理指令", "op", cmd.Op)
 	}
