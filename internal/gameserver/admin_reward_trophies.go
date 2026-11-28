@@ -2,6 +2,7 @@ package gameserver
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -126,6 +127,41 @@ func (s *Server) adminGrantRewardTrophy(ctx context.Context, uid int64, itemID s
 	return true
 }
 
+// invalidTradingCardIDs 返回「静态库定义坏了」的卡牌 item_id：鱼种不在
+// species_weight（无中文名/无档位，客户端显示俄文占位名）或没有出售价
+// （obcephkkfhi<=0，玩家卖不掉=清不掉）。2026-11-28 实测静态库有 5 张：
+// card_c_bream / card_d_labrax / card_epigon_t / card_regalecus_g / card_sea_brama。
+// 一键发卡必须跳过它们，否则会给玩家塞进清不掉的未知卡。
+func (s *Server) invalidTradingCardIDs(ctx context.Context) map[string]bool {
+	bad := map[string]bool{}
+	if s == nil || s.DB == nil {
+		return bad
+	}
+	rows, err := s.DB.SQL.QueryContext(ctx, `
+		SELECT d.item_id, d.attrs_json,
+		       (SELECT COUNT(*) FROM species_weight w WHERE w.fish_key=json_extract(d.attrs_json,'$.okppoalfakf'))
+		FROM item_def d WHERE d.category=78`)
+	if err != nil {
+		return bad
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, raw string
+		var fishRows int64
+		if err := rows.Scan(&id, &raw, &fishRows); err != nil {
+			continue
+		}
+		var attrs struct {
+			Fish  string  `json:"okppoalfakf"`
+			Price float64 `json:"obcephkkfhi"`
+		}
+		if json.Unmarshal([]byte(raw), &attrs) != nil || attrs.Fish == "" || fishRows == 0 || attrs.Price <= 0 {
+			bad[id] = true
+		}
+	}
+	return bad
+}
+
 // tradingCardDeckNeeds 统计每张卡牌被多少本卡册（category 82）需要。
 // 真实静态库里 65 张卡被 2~4 本卡册共用（如 card_s_orfe 被 4 本册引用），
 // 而一张卡实例同一时刻只能入一本册（trading_card_albums.go 的
@@ -189,7 +225,12 @@ func (s *Server) grantAllTradingCardsForAdmin(uid int64) (cards, decks int) {
 	}
 	_ = rows.Close()
 	need := s.tradingCardDeckNeeds(ctx)
+	invalid := s.invalidTradingCardIDs(ctx)
 	for _, r := range list {
+		if r.cat == 78 && invalid[r.id] {
+			s.log.Warn("管理发放卡牌：跳过定义损坏的卡", "uid", uid, "item", r.id)
+			continue // 坏卡不发，避免塞进玩家清不掉的未知卡
+		}
 		target := 1
 		if r.cat == 78 {
 			if n := need[r.id]; n > target {
@@ -218,4 +259,60 @@ func (s *Server) grantAllTradingCardsForAdmin(uid int64) (cards, decks int) {
 	}
 	s.log.Info("管理指令：一键发放所有卡牌（按卡册需求补足副本）", "uid", uid, "cards", cards, "decks", decks)
 	return cards, decks
+}
+
+// cleanupInvalidCardsForAdmin 清理指定玩家（uid<=0=全服）手里「定义损坏」的卡牌：
+// 鱼种不在 species_weight（俄文占位名）或没有出售价（清不掉）的 category=78 卡。
+// 直接删 item 行并推 4/21 删除事件，玩家无需重登；卡册内已入册的坏卡一并清理
+// （DeleteItemCascade 会解引用）。返回删除数量。
+func (s *Server) cleanupInvalidCardsForAdmin(uid int64) int {
+	if s == nil || s.DB == nil {
+		return 0
+	}
+	ctx := s.dbCtx()
+	invalid := s.invalidTradingCardIDs(ctx)
+	if len(invalid) == 0 {
+		return 0
+	}
+	// 一次查询同时取 guid/item_id；item 表本身没有 category 列，
+	// 用 item_id 是否在坏卡集合里判定即可（坏卡集合已限定 category=78）。
+	var rows *sql.Rows
+	var err error
+	if uid > 0 {
+		rows, err = s.DB.SQL.QueryContext(ctx, `SELECT guid,item_id FROM item WHERE uid=?`, uid)
+	} else {
+		rows, err = s.DB.SQL.QueryContext(ctx, `SELECT guid,item_id FROM item`)
+	}
+	if err != nil {
+		return 0
+	}
+	guids := make([]string, 0, 64)
+	for rows.Next() {
+		var guid, itemID string
+		if err := rows.Scan(&guid, &itemID); err != nil {
+			continue
+		}
+		if invalid[itemID] {
+			guids = append(guids, guid)
+		}
+	}
+	_ = rows.Close()
+	deleted := 0
+	for _, guid := range guids {
+		row, gerr := s.DB.GetItemByGUID(ctx, guid)
+		if gerr != nil || row == nil {
+			continue
+		}
+		if err := s.DB.DeleteItemCascade(ctx, guid); err != nil {
+			s.log.Warn("清理坏卡失败", "guid", guid, "err", err)
+			continue
+		}
+		deleted++
+		for _, sess := range s.sessionsForUID(row.UID) {
+			sess.Push4_21([]string{guid})
+			sess.Push2_1()
+		}
+	}
+	s.log.Info("管理指令：清理损坏卡牌", "uid", uid, "deleted", deleted)
+	return deleted
 }

@@ -186,7 +186,7 @@ func (s *Server) applyBiteGates(ctx context.Context, keys []string, wts []float6
 		}
 		for _, key := range keys {
 			if zh, ok := names[key]; ok {
-				_, has, hit := s.userBaitRuleForFish(ctx, c, zh, hookBaits, gateNow)
+				_, has, hit, _ := s.userBaitRuleForFish(ctx, c, zh, hookBaits, gateNow)
 				if has {
 					userBait[key] = northSeaUserBaitState{has: true, hit: hit}
 				}

@@ -580,7 +580,13 @@ func (s *Server) filterFishBaitSet(loc string, ids []string, keys []string, weig
 		// 用户没点名的饵一律 0 权重，绝不回退内置规则。前置条件保留，
 		// 由 userBaitRuleForFish 按用户规则自身的 condition 判定。
 		// 用户未设置过的鱼，下面整条内置链路不变。
-		if userRule, hasUser, userHit := s.userBaitRuleForFish(ctx, c, names[key], baits, now); hasUser {
+		userRule, hasUser, userHit, zoneBlocked := s.userBaitRuleForFish(ctx, c, names[key], baits, now)
+		if zoneBlocked {
+			// ★淡水区域限制优先于用户饵权：区域前置条件不满足，该鱼本轮
+			// 不咬钩，绝不能回退内置链路（否则用户饵在区域外仍能咬）。
+			continue
+		}
+		if hasUser {
 			if userHit {
 				rot := baitRotation{}
 				if ov, ok := s.baitOverrides(ctx)[ruleName(names[key])]; ok {

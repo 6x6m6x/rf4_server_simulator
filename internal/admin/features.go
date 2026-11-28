@@ -868,3 +868,27 @@ func (s *Server) handleGrantAllCards(w http.ResponseWriter, r *http.Request) {
 		strconv.FormatInt(req.UID, 10), "all")
 	writeJSON(w, map[string]any{"ok": true, "queued": true})
 }
+
+// handleCleanupInvalidCards POST /api/players/cards/cleanup-invalid
+// 清理定义损坏的卡牌（俄文占位名/无价格卖不掉）。uid<=0 表示全服。
+func (s *Server) handleCleanupInvalidCards(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UID int64 `json:"uid"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		httpError(w, 400, "参数错误")
+		return
+	}
+	if err := s.db.QueuePush(r.Context(), mustJSON(map[string]any{
+		"op": "cleanup_invalid_cards", "uid": req.UID,
+	})); err != nil {
+		httpError(w, 500, "写入发送队列失败: "+err.Error())
+		return
+	}
+	scope := "all"
+	if req.UID > 0 {
+		scope = strconv.FormatInt(req.UID, 10)
+	}
+	_ = s.db.AuditLogWrite(r.Context(), adminOf(r), "cleanup_invalid_cards", scope, "all")
+	writeJSON(w, map[string]any{"ok": true, "queued": true})
+}

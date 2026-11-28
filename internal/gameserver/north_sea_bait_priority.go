@@ -42,22 +42,32 @@ func isNorthSeaBaitLoc(locs ...string) bool {
 
 // userBaitRuleForFish 返回用户覆盖判鱼状态：
 //
-//	(r, true,  hit) 用户规则生效且钩上出现用户点名的饵 → 只认用户 allow 饵
-//	(r, true, !hit) 用户规则生效但钩上没有用户饵     → 该鱼一律不吃
-//	(_, false, _)   用户规则不存在/前置条件不满足     → 走原内置链路
+//	(r, true,  hit, false) 用户规则生效且钩上出现用户点名的饵 → 只认用户 allow 饵
+//	(r, true, !hit, false) 用户规则生效但钩上没有用户饵     → 该鱼一律不吃
+//	(_, false, _,  false)  用户规则不存在                   → 走原内置链路
+//	(_, false, _,  true)   ★淡水：用户规则存在但区域前置条件不满足 → 该鱼本轮不咬钩
+//
+// ★2026-11-28 区域限制优先于用户饵权（仅淡水）：用户给某鱼设了喜爱饵+区域
+// 前置条件（海图/声呐区号）时，落点不在该区域 → 直接剔除该鱼，绝不回退内置
+// 链路（否则用户饵在区域外仍能咬钩）。挪威海维持原语义：condition 不满足
+// 回退原链路，不走该硬门。
 func (s *Server) userBaitRuleForFish(ctx context.Context, c fishRollContext,
-	fishZh string, baits []ruleBait, now time.Time) (fishBaitRule, bool, bool) {
+	fishZh string, baits []ruleBait, now time.Time) (fishBaitRule, bool, bool, bool) {
 	if s == nil || s.DB == nil {
-		return fishBaitRule{}, false, false
+		return fishBaitRule{}, false, false, false
 	}
 	ov, ok := s.baitOverrides(ctx)[ruleName(fishZh)]
 	if !ok || len(ov.rule.allow) == 0 {
-		return fishBaitRule{}, false, false
+		return fishBaitRule{}, false, false, false
 	}
 	r := ov.rule
-	// 前置规则保留：用户规则里的 condition 原样生效；不满足则交给原链路。
+	// 前置规则保留：用户规则里的 condition 原样生效。
 	if !ruleConditionAllows(r, c) {
-		return fishBaitRule{}, false, false
+		// ★淡水硬门：带区域前置条件的规则，条件不满足 = 该鱼不咬钩。
+		if !isNorthSeaBaitLoc(c.loc) && (r.chartAny || len(r.chartZones) > 0 || len(r.sonarZones) > 0) {
+			return fishBaitRule{}, false, false, true
+		}
+		return fishBaitRule{}, false, false, false
 	}
 	// 命中判定要带上当前轮换组：后台同时设置 allow 与轮换组时，
 	// 组内饵同样算「用户点名」，否则严格轮换组会被误判成没命中。
@@ -72,5 +82,5 @@ func (s *Server) userBaitRuleForFish(ctx context.Context, c fishRollContext,
 			break
 		}
 	}
-	return r, true, hit
+	return r, true, hit, false
 }

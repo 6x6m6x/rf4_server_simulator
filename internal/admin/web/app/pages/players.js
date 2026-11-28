@@ -276,7 +276,9 @@ function profile(p, reload, setDirty) {
     trophyList.replaceChildren(h('table', { class: 'table' }, h('thead', {}, h('tr', {}, h('th', {}), h('th', { text: '奖杯（中文名优先）' }), h('th', { text: '物品 ID' }))), h('tbody', {}, rows)));
   }
   trophySearch.addEventListener('input', debounce(drawTrophies, 200));
-  apiList('/api/reward-trophies').then((r) => { trophyCache = r.items || []; drawTrophies(); }).catch((e) => trophyList.replaceChildren(empty('奖杯清单读取失败', errText(e))));
+  // ★该接口返回 {items:[...]} 对象，不是裸数组——必须用 api() 取 .items；
+  // 用 apiList() 会把对象兜底成 []，表现为「搜不到任何结果」。
+  api('/api/reward-trophies').then((r) => { trophyCache = (r && r.items) || []; drawTrophies(); }).catch((e) => trophyList.replaceChildren(empty('奖杯清单读取失败', errText(e))));
   const trophySection = section({
     title: '按需发放奖赏奖杯',
     desc: '奖赏面板（3/16）里的奖杯必须用专用通道发放才会显示——普通「发物品」只会进背包、面板看不到。默认展示全部奖杯，可按中文名、英文名或物品 ID 搜索；勾选后一键发放，已拥有的会自动跳过。详细用法见服务端 docs/reward-trophies.md。',
@@ -296,10 +298,15 @@ function profile(p, reload, setDirty) {
   const cardSection = section({
     title: '一键发放所有卡牌',
     desc: '把全部集换卡牌与卡册发到该玩家背包（已达到需求的自动跳过）。同一鱼种被多本卡册共用时会按最大需求数发足副本（最多 4 张），方便分别入册；卡牌会按鱼种自动填充卡面数据，发放后约 2 秒可在游戏里看到。',
-    body: h('div', {}, btn('发放所有卡牌与卡册', async () => {
-      if (!(await confirmDialog({ title: `给「${p.name}」发放所有卡牌？`, desc: '全部卡牌与卡册（约 280 种）逐个发放，共用鱼种按卡册需求补足副本，已满足的跳过。此操作会记入后台操作日志。', confirm: '全部发放' }))) return;
-      try { await post('/api/players/cards/grant-all', { uid: p.uid }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
-    }, 'primary sm', { icon: 'plus' })),
+    body: h('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } },
+      btn('发放所有卡牌与卡册', async () => {
+        if (!(await confirmDialog({ title: `给「${p.name}」发放所有卡牌？`, desc: '全部卡牌与卡册（约 280 种）逐个发放，共用鱼种按卡册需求补足副本，已满足的跳过；定义损坏的卡（无中文名/无价格）会自动跳过。此操作会记入后台操作日志。', confirm: '全部发放' }))) return;
+        try { await post('/api/players/cards/grant-all', { uid: p.uid }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
+      }, 'primary sm', { icon: 'plus' }),
+      btn('清理损坏卡牌', async () => {
+        if (!(await confirmDialog({ title: `清理「${p.name}」的损坏卡牌？`, desc: '删除定义损坏、卖不掉、显示俄文占位名的卡牌（如 card_c_bream/card_d_labrax 等 5 种）。正常卡牌不受影响。此操作会记入后台操作日志。', confirm: '清理' }))) return;
+        try { await post('/api/players/cards/cleanup-invalid', { uid: p.uid }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
+      }, 'sm', { icon: 'trash' })),
   });
   // 危险操作：彻底删除玩家。
   const dangerBlock = h('div', { style: { borderTop: '1px solid var(--line)', marginTop: '14px', paddingTop: '14px' } },

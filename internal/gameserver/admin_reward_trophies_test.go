@@ -50,6 +50,54 @@ func TestAdminGrantAllCards(t *testing.T) {
 
 // TestAdminGrantAllCardsSharedDeckCopies：多本卡册共用同一鱼种时，必须发足副本，
 // 否则一张卡只能入一本册，其余合集永远集不齐。
+// TestAdminGrantAllCardsSkipsInvalid：一键发卡不得发放定义损坏的卡
+// （鱼种缺失显示俄文名、售价 0 清不掉），存量坏卡可被清理且不影响正常卡。
+func TestAdminGrantAllCardsSkipsInvalid(t *testing.T) {
+	srv, db := newStaticRigTestServer(t)
+	defer db.Close()
+	ctx := context.Background()
+	const uid = int64(1000006)
+	if _, err := db.EnsureProfile(ctx, uid); err != nil { t.Fatal(err) }
+	bad := srv.invalidTradingCardIDs(ctx)
+	const knownBad = "card_c_bream"
+	if !bad[knownBad] {
+		t.Fatalf("静态库应把 %s 判为损坏卡", knownBad)
+	}
+	srv.grantAllTradingCardsForAdmin(uid)
+	var badCount int
+	if err := db.SQL.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM item WHERE uid=? AND item_id=?`, uid, knownBad).Scan(&badCount); err != nil {
+		t.Fatal(err)
+	}
+	if badCount != 0 { t.Fatalf("一键发卡不应发放坏卡 %s，实得 %d 张", knownBad, badCount) }
+
+	// 手工塞一张坏卡模拟存量玩家（绕过 CreateItem 的鱼种校验），再执行清理。
+	var numericID int64
+	if err := db.SQL.QueryRowContext(ctx,
+		`SELECT numeric_id FROM item_def WHERE item_id=?`, knownBad).Scan(&numericID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.ExecContext(ctx,
+		`INSERT INTO item(guid,uid,item_id,numeric_id,wire_class,type_id,container,slot,qty) VALUES(?,?,?,?,?,?,?,?,?)`,
+		"badcard000000000000000000000001", uid, knownBad, numericID, "dapkdcghfmg", 11301, "native:18", 0, 1); err != nil {
+		t.Fatal(err)
+	}
+	if n := srv.cleanupInvalidCardsForAdmin(uid); n < 1 {
+		t.Fatalf("清理应至少删除 1 张坏卡，实得 %d", n)
+	}
+	if err := db.SQL.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM item WHERE uid=? AND item_id=?`, uid, knownBad).Scan(&badCount); err != nil {
+		t.Fatal(err)
+	}
+	if badCount != 0 { t.Fatalf("清理后坏卡应清零，实得 %d", badCount) }
+	// 正常卡不受影响。
+	var goodCount int
+	if err := db.SQL.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM item WHERE uid=? AND item_id='card_s_orfe'`, uid).Scan(&goodCount); err != nil || goodCount == 0 {
+		t.Fatalf("正常卡应保留: count=%d err=%v", goodCount, err)
+	}
+}
+
 func TestAdminGrantAllCardsSharedDeckCopies(t *testing.T) {
 	srv, db := newStaticRigTestServer(t)
 	defer db.Close()

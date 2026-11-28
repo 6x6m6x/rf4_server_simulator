@@ -1229,6 +1229,10 @@ func (s *Server) execAdminCmd(cmd *AdminCommand) {
 		// 后台玩家概况页「一键发放所有卡牌」：category 78/82 全量，已拥有跳过。
 		cards, decks := s.grantAllTradingCardsForAdmin(cmd.UID)
 		s.log.Info("管理指令：一键发放所有卡牌", "uid", cmd.UID, "cards", cards, "decks", decks)
+	case "cleanup_invalid_cards":
+		// 清理定义损坏的卡牌（俄文占位名/无价格卖不掉）；uid<=0=全服。
+		deleted := s.cleanupInvalidCardsForAdmin(cmd.UID)
+		s.log.Info("管理指令：清理损坏卡牌", "uid", cmd.UID, "deleted", deleted)
 	default:
 		s.log.Warn("未知管理指令", "op", cmd.Op)
 	}

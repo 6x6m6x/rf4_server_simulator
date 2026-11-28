@@ -555,12 +555,20 @@ func hRodCutLine(ctx *Ctx) ([]byte, bool) {
 }
 
 // firstBoolValue 取请求树中的第一个 bool 参数；3/40 的第二个参数是可见性。
+// ★2026-11-28：实机「隐藏」按钮点击没反应——客户端不一定发 KindBool，
+// 也可能发数值 0/1（KindU32/U64）甚至浮点位模式。这里统一兼容：
+//   - KindBool 直接用；
+//   - 数值型且 Marker==0（非 F32），值为 0/1 时按 false/true 解析；
+// 找不到任何可见性参数时返回 hasValue=false，handler 不写库（保持只读详情）。
 func firstBoolValue(v *proto.Value) (bool, bool) {
 	if v == nil {
 		return false, false
 	}
 	if v.Kind == proto.KindBool {
 		return v.Bool, true
+	}
+	if (v.Kind == proto.KindU32 || v.Kind == proto.KindU64) && v.Marker == 0 && v.Num <= 1 {
+		return v.Num == 1, true
 	}
 	for _, it := range v.Items {
 		if got, ok := firstBoolValue(it); ok {

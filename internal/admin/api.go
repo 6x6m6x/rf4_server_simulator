@@ -105,6 +105,7 @@ func NewServer(cfg config.Admin, db *store.DB, log logger, webFS fs.FS) *Server 
 	mux.HandleFunc("GET /api/reward-trophies", auth(s.handleRewardTrophyCatalog))
 	mux.HandleFunc("POST /api/players/reward-trophies", auth(s.handleGrantRewardTrophies))
 	mux.HandleFunc("POST /api/players/cards/grant-all", auth(s.handleGrantAllCards))
+	mux.HandleFunc("POST /api/players/cards/cleanup-invalid", auth(s.handleCleanupInvalidCards))
 	mux.HandleFunc("GET /api/catalog/items", s.handleCatalogItems)   // 匿名只读：不登录也能看
 	mux.HandleFunc("GET /api/catalog/groups", s.handleCatalogGroups) // 匿名只读：不登录也能看
 	mux.HandleFunc("GET /api/stores", s.handleStores)                // 匿名只读：不登录也能看
