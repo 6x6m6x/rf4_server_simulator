@@ -575,53 +575,43 @@ func (s *Server) filterFishBaitSet(loc string, ids []string, keys []string, weig
 		if weights[i] <= 0 {
 			continue
 		}
-		// ★用户爱吃饵优先（补丁，全水域）：用户设置过 allow 的鱼，只认用户
-		// 点名的饵，满档权重且跳过严格清单/占比分级/长尾闸/拟饵门；
-		// 用户没点名的饵一律 0 权重，绝不回退内置规则。前置条件保留，
-		// 由 userBaitRuleForFish 按用户规则自身的 condition 判定。
-		// 用户未设置过的鱼，下面整条内置链路不变。
-		userRule, hasUser, userHit, zoneBlocked := s.userBaitRuleForFish(ctx, c, names[key], baits, now)
-		if zoneBlocked {
-			// ★淡水区域限制优先于用户饵权：区域前置条件不满足，该鱼本轮
-			// 不咬钩，绝不能回退内置链路（否则用户饵在区域外仍能咬）。
+		// ★用户爱吃饵优先（2026-11-28 重写）：单一判定入口给出四级 verdict。
+		// 区域是第一级硬门槛，淡水区域外直接 blocked 剔除，绝不回退内置链路。
+		userRule, rot, verdict := s.evaluateUserBait(ctx, c, loc, key, names[key], baits, now)
+		switch verdict {
+		case userBaitBlocked, userBaitMiss:
+			// 区域外（淡水）或钩上没用户点名的饵 → 本鱼不咬。
 			continue
-		}
-		if hasUser {
-			if userHit {
-				rot := baitRotation{}
-				if ov, ok := s.baitOverrides(ctx)[ruleName(names[key])]; ok {
-					rot = ov.rot
+		case userBaitHit:
+			activeGroup := activeBaitGroup(rot, now)
+			strictRotation := activeGroup != nil && rot.mode == "strict"
+			best := 0.0
+			preferred := 0
+			for _, b := range baits {
+				if !rotationKeepsBait(activeGroup, strictRotation, b) {
+					continue
 				}
-				activeGroup := activeBaitGroup(rot, now)
-				strictRotation := activeGroup != nil && rot.mode == "strict"
-				best := 0.0
-				preferred := 0
-				for _, b := range baits {
-					if !rotationKeepsBait(activeGroup, strictRotation, b) {
-						continue
-					}
-					if baitBlockedByRule(userRule, c, b) || !baitAllowedByRule(userRule, b, activeGroup) {
-						continue
-					}
-					// 满档且高于内置规则最高档（内置 full ≤1.5，这里基准 1.725）。
-					score := maxBaitPreference
-					if activeGroup != nil {
-						score *= rotationScoreMultiplier(activeGroup, b)
-					}
-					preferred++
-					best = math.Max(best, score)
+				if baitBlockedByRule(userRule, c, b) || !baitAllowedByRule(userRule, b, activeGroup) {
+					continue
 				}
-				if best > 0 {
-					if preferred > 1 {
-						best *= 1 + math.Min(0.15, 0.05*float64(preferred-1))
-					}
-					outKeys = append(outKeys, key)
-					outWeights = append(outWeights, weights[i]*best)
+				// 满档且高于内置规则最高档（内置 full ≤1.5，这里基准 1.725）。
+				score := maxBaitPreference
+				if activeGroup != nil {
+					score *= rotationScoreMultiplier(activeGroup, b)
 				}
+				preferred++
+				best = math.Max(best, score)
 			}
-			// 用户规则生效时，本鱼只由用户 allow 决定：没命中就不出（continue）。
+			if best > 0 {
+				if preferred > 1 {
+					best *= 1 + math.Min(0.15, 0.05*float64(preferred-1))
+				}
+				outKeys = append(outKeys, key)
+				outWeights = append(outWeights, weights[i]*best)
+			}
 			continue
 		}
+		// userBaitNone：用户没设规则 → 下面整条内置链路不变。
 		if strictExact {
 			r, ok := lookupStrictFishBaitRule(names[key])
 			if !ok || !ruleConditionAllows(r, c) {

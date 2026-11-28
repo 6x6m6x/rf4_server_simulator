@@ -186,9 +186,11 @@ func (s *Server) applyBiteGates(ctx context.Context, keys []string, wts []float6
 		}
 		for _, key := range keys {
 			if zh, ok := names[key]; ok {
-				_, has, hit, _ := s.userBaitRuleForFish(ctx, c, zh, hookBaits, gateNow)
-				if has {
-					userBait[key] = northSeaUserBaitState{has: true, hit: hit}
+				_, _, verdict := s.evaluateUserBait(ctx, c, statLoc, key, zh, hookBaits, gateNow)
+				// blocked（淡水区域外）与 miss（无用户饵）都算“有用户规则但不吃”，
+				// 让下面的硬门走用户独占分支直接剔除，不回退内置食性门。
+				if verdict == userBaitHit || verdict == userBaitMiss || verdict == userBaitBlocked {
+					userBait[key] = northSeaUserBaitState{has: true, hit: verdict == userBaitHit}
 				}
 			}
 		}

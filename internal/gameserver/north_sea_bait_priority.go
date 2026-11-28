@@ -6,24 +6,30 @@ import (
 	"time"
 )
 
-// 用户爱吃饵优先补丁（2026-11-26 挪威海，2026-11-27 扩展到全部水域）。
+// 用户爱吃饵优先（2026-11-28 彻底重写）。
 //
-// 问题：后台「鱼饵偏好」里用户点名的饵，虽然通过 fish_bait_override 覆盖了
-// 内置 allow 清单，但后面还有多层内置规则会把它挡掉：
-//   1) bait_exact_only 严格清单直接跳过 override；
-//   2) rf4 占比分级 / 长尾闸 / 拟饵门（<1% 出池、1~5% ×0.25）；
-//   3) bite_gate 的 G1 食性硬门、G-diet 天然饵双票。
+// 一条鱼能不能咬，分两级、顺序固定：
+//   第一级 区域限制（淡水 = fish_zone 落点名册；挪威海 = 用户规则的海图区号）
+//   第二级 饵命中（用户点名的 allow / 轮换组）
 //
-// 判定规则：
-//   - 全部水域：用户给某鱼点过 allow 清单时，饵权层只认用户点名的饵，
-//     满档权重且跳过严格清单/占比分级/长尾闸/拟饵门；用户没点名的饵一律
-//     不吃（不回退内置规则）。用户未设置过的鱼沿用内置规则。
-//   - 仅挪威海：额外豁免 G1/G-diet 食性硬门（挪威海全豁免）。
-//     其它水域只改饵权，硬门仍按内置规则判定。
-//   - 前置条件（condition）在所有水域都保留：用户规则自身 condition 原样判，
-//     不满足则补丁不接管，回到原链路。
+// ★淡水与挪威海的区域是两套完全不同的东西，不能混用：
+//   - 挪威海区域：用户饵规则 condition 里的海图/声呐区号（chartZones/sonarZones），
+//     沿中性语义 ruleConditionAllows 判定，不满足回退内置链路。
+//   - 淡水区域：后台「鱼种区域名册」fish_zone（grid_rect/grid_cells/circle 落点坐标）。
+//     被独占区名单限定的鱼种，落点不在包含它的独占区内 → 判定区域外，直接剔除，
+//     绝不让用户饵权把它从区外钓出来。
+//
+// 本文件只管「用户设过喜爱饵」的鱼；没设过的鱼完全走内置链路，不受影响。
 
-// isNorthSeaBaitLoc 判断本次判鱼是否发生在挪威海。
+type userBaitVerdict int
+
+const (
+	userBaitNone    userBaitVerdict = iota // 用户没设规则 / 前置条件不满足 → 走内置链路
+	userBaitBlocked                        // 区域限制挡下（淡水 fish_zone 区外）→ 剔除该鱼
+	userBaitMiss                           // 用户规则生效但钩上没用户点名的饵 → 不吃
+	userBaitHit                            // 命中用户饵 → 满权重、跳过内置分级/硬门
+)
+
 func isNorthSeaBaitLoc(locs ...string) bool {
 	for _, loc := range locs {
 		if loc == "" {
@@ -40,47 +46,85 @@ func isNorthSeaBaitLoc(locs ...string) bool {
 	return false
 }
 
-// userBaitRuleForFish 返回用户覆盖判鱼状态：
+// freshwaterZoneBlocksFish 判断淡水 fish_zone 名册是否把这条鱼挡在落点之外。
 //
-//	(r, true,  hit, false) 用户规则生效且钩上出现用户点名的饵 → 只认用户 allow 饵
-//	(r, true, !hit, false) 用户规则生效但钩上没有用户饵     → 该鱼一律不吃
-//	(_, false, _,  false)  用户规则不存在                   → 走原内置链路
-//	(_, false, _,  true)   ★淡水：用户规则存在但区域前置条件不满足 → 该鱼本轮不咬钩
+// 语义（只针对「用户设了喜爱饵」的鱼）：
+//   若该鱼种出现在任一启用的 exclusive 独占区名单里，且落点不在**任何**
+//   包含它的独占区内 → 区域外，挡下。
+//   落点命中了某个包含它的独占区 → 放行（区域内可咬）。
+//   没有独占区名单包含这条鱼 → 不涉及区域限制，放行。
 //
-// ★2026-11-28 区域限制优先于用户饵权（仅淡水）：用户给某鱼设了喜爱饵+区域
-// 前置条件（海图/声呐区号）时，落点不在该区域 → 直接剔除该鱼，绝不回退内置
-// 链路（否则用户饵在区域外仍能咬钩）。挪威海维持原语义：condition 不满足
-// 回退原链路，不走该硬门。
-func (s *Server) userBaitRuleForFish(ctx context.Context, c fishRollContext,
-	fishZh string, baits []ruleBait, now time.Time) (fishBaitRule, bool, bool, bool) {
-	if s == nil || s.DB == nil {
-		return fishBaitRule{}, false, false, false
+// 注意：这不动 fish_zone 既有「独占区命中区内只出名单鱼、区外不受影响」的
+// 全局语义；只给「用户设了喜爱饵的鱼」补一条区外约束，堵住用户饵权突破区域。
+func (s *Server) freshwaterZoneBlocksFish(ctx context.Context, statLoc, fishKey string, c fishRollContext) bool {
+	if s == nil || s.DB == nil || statLoc == "" || fishKey == "" {
+		return false
 	}
-	ov, ok := s.baitOverrides(ctx)[ruleName(fishZh)]
+	zones := s.fishZonesFor(ctx, statLoc)
+	listed := false // 该鱼是否被某个独占区名单收编
+	for _, z := range zones {
+		if !z.Enabled || z.Mode != "exclusive" {
+			continue
+		}
+		for _, f := range z.Fish {
+			if f.Enabled && f.Weight > 0 && f.FishKey == fishKey {
+				listed = true
+				// 落点命中了包含本鱼的独占区 → 区域内，放行。
+				if fishZoneContains(z, c) {
+					return false
+				}
+				break
+			}
+		}
+	}
+	// 被独占区收编，但落点不在任何包含它的独占区 → 区域外。
+	return listed
+}
+
+// evaluateUserBait 是用户爱吃饵的唯一判定入口，返回 (规则, 轮换, 判定)。
+// statLoc 是解析后的水域名，用于淡水 fish_zone 名册查询（挪威海可传空）。
+func (s *Server) evaluateUserBait(ctx context.Context, c fishRollContext, statLoc, fishKey,
+	fishZh string, baits []ruleBait, now time.Time) (fishBaitRule, baitRotation, userBaitVerdict) {
+	if s == nil || s.DB == nil {
+		return fishBaitRule{}, baitRotation{}, userBaitNone
+	}
+	key := ruleName(fishZh)
+	ov, ok := s.baitOverrides(ctx)[key]
 	if !ok || len(ov.rule.allow) == 0 {
-		return fishBaitRule{}, false, false, false
+		return fishBaitRule{}, baitRotation{}, userBaitNone
 	}
 	r := ov.rule
-	// 前置规则保留：用户规则里的 condition 原样生效。
-	if !ruleConditionAllows(r, c) {
-		// ★淡水硬门：带区域前置条件的规则，条件不满足 = 该鱼不咬钩。
-		if !isNorthSeaBaitLoc(c.loc) && (r.chartAny || len(r.chartZones) > 0 || len(r.sonarZones) > 0) {
-			return fishBaitRule{}, false, false, true
+
+	// 第一级：区域限制。淡水走 fish_zone 落点名册，挪威海走海图区号。
+	if isNorthSeaBaitLoc(c.loc, statLoc) {
+		// 挪威海：condition 里的海图区号不满足 → 回退内置链路（原语义）。
+		if !ruleConditionAllows(r, c) {
+			return fishBaitRule{}, baitRotation{}, userBaitNone
 		}
-		return fishBaitRule{}, false, false, false
+	} else {
+		// 淡水：fish_zone 独占区名单鱼在落点区外 → 挡下，不回退内置链路。
+		if s.freshwaterZoneBlocksFish(ctx, statLoc, fishKey, c) {
+			return r, ov.rot, userBaitBlocked
+		}
+		// 淡水的非区域前置（船/路亚运动等）沿用中性语义。
+		rNoZone := r
+		rNoZone.chartAny = false
+		rNoZone.chartZones = nil
+		rNoZone.sonarZones = nil
+		if !ruleConditionAllows(rNoZone, c) {
+			return fishBaitRule{}, baitRotation{}, userBaitNone
+		}
 	}
-	// 命中判定要带上当前轮换组：后台同时设置 allow 与轮换组时，
-	// 组内饵同样算「用户点名」，否则严格轮换组会被误判成没命中。
+
+	// 第二级：饵命中。带上当前轮换组，后台同时设 allow 与轮换组时组内饵也算命中。
 	activeGroup := activeBaitGroup(ov.rot, now)
-	hit := false
 	for _, b := range baits {
 		if baitBlockedByRule(r, c, b) {
 			continue
 		}
 		if baitAllowedByRule(r, b, activeGroup) {
-			hit = true
-			break
+			return r, ov.rot, userBaitHit
 		}
 	}
-	return r, true, hit, false
+	return r, ov.rot, userBaitMiss
 }
