@@ -69,6 +69,9 @@ func TestFishEcologySeedsSpeciesAndMatchesWaterLayers(t *testing.T) {
 	}
 
 	// 合成鱼口权重：暖季底层偏向鲶鱼，冬季鲶鱼被季节权重压低（season_mask 不含冬）。
+	// 本用例锁的是含水层因子的旧行为，补丁默认跳过水层，临时关掉以验旧断言。
+	srv.tunCache["skip_layer_factor"] = 0
+	defer func() { srv.tunCache["skip_layer_factor"] = 1 }()
 	// 游戏历 24 倍速，这里固定游戏时刻，避免真实日期漂移。
 	summer := time.Unix(worldDayEpochUnix+180*24*realSecPerGameHour+12*realSecPerGameHour, 0)
 	winter := time.Unix(worldDayEpochUnix+350*24*realSecPerGameHour+12*realSecPerGameHour, 0)

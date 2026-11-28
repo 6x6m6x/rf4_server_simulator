@@ -74,6 +74,9 @@ func TestBiteGatesExcludeLureNonPredators(t *testing.T) {
 // G2：水层超界乘地板不剔除；栖息带内的正常权重不受影响。
 func TestBiteGateLayerFloor(t *testing.T) {
 	s, db := seedBaitRuleTest(t)
+	// 本用例锁的是 G2 水层地板旧行为；补丁默认跳过水层，临时关掉以验旧断言。
+	setBaitRuleTunable(t, s, "skip_layer_factor", "0")
+	defer setBaitRuleTunable(t, s, "skip_layer_factor", "1")
 	// 模板库只带 item_def，名册表为空；补中文名供双票解析攻略规则。
 	if _, err := db.SQL.Exec(`INSERT INTO loc_fish(loc,fish_key,name_zh,catches) VALUES('gates-test','vjun','泥鳅',1),('gates-test','crucian','银鲫',1),('gates-test','burbot','江鳕',1)`); err != nil {
 		t.Fatal(err)

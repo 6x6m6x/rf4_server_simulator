@@ -41,6 +41,13 @@ type biteGateConfig struct {
 // biteGateLayerTol 是非浮钓的水层容差，也是浮钓错层过渡带的中点。
 const biteGateLayerTol = 0.15
 
+// skipLayerFactor 补丁总开关（默认开）：让所有鱼跳过鱼口硬门 G2 水层地板
+// 与生态权重的水层因子。设为 0 可回退到主分支原生判定。
+// 只跳过“水层”这一个维度，G1 食性硬剔、G-diet 双票、昼夜/季节/天气等不变。
+func (s *Server) skipLayerFactor() bool {
+	return s != nil && s.tunableF("skip_layer_factor", 1) == 1
+}
+
 func (s *Server) biteGateConfig() biteGateConfig {
 	if s.tunableF("bite_gate_enabled", 0) != 1 {
 		return biteGateConfig{}
@@ -178,7 +185,8 @@ func (s *Server) applyBiteGates(ctx context.Context, keys []string, wts []float6
 			wts[i] *= score
 		}
 		w := wts[i]
-		if layerKnown {
+		// 补丁：跳过 G2 水层地板（所有鱼）。G1/G-diet 仍按 cfg 判定。
+		if layerKnown && !s.skipLayerFactor() {
 			if floatRigTypes[c.rigType] {
 				// 错层达 0.30 时到地板。两端斜率为零，容差两侧的相邻调漂值连续。
 				gap := math.Max(p.LayerMin-target, target-p.LayerMax)

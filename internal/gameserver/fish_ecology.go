@@ -339,8 +339,14 @@ func (s *Server) fishBiteEnvironmentWeight(ctx context.Context, key string, c fi
 		value     float64
 		tolerance float64
 	}
+	// 补丁：跳过水层因子时置中性 1，保留它在 factors[0] 的位置与后续
+	// floor/exponent 分支（不改层级、不移动其它因子的 index）。
+	layerValue := s.fishLayerWeightProfile(p, c)
+	if s.skipLayerFactor() {
+		layerValue = 1
+	}
 	factors := []weightedFactor{{
-		value: s.fishLayerWeightProfile(p, c), tolerance: c.skill.LayerAccuracy,
+		value: layerValue, tolerance: c.skill.LayerAccuracy,
 	}}
 	_, hour := worldDayAndHour(c.now.Unix())
 	factors = append(factors, weightedFactor{fishDielWeight(p, hour), c.skill.EcologyInterest})

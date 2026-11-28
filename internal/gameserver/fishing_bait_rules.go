@@ -593,6 +593,13 @@ func (s *Server) filterFishBaitSet(loc string, ids []string, keys []string, weig
 		if !ruleConditionAllows(r, c) {
 			continue
 		}
+		// 补丁：用户在后台给这条鱼设过饵料（override 且 allow 非空）时，
+		// 该鱼只吃 allow 名单里的饵；占比分级/companion/本地证据/替代饵
+		// 一律不得越级把它拉回候选。没设过的鱼完全走主分支原链路。
+		userBaitOnly := false
+		if ov, ok := s.baitOverrides(ctx)[ruleName(names[key])]; ok && len(ov.rule.allow) > 0 {
+			userBaitOnly = true
+		}
 		best := 0.0
 		preferred := 0
 		hasRule := len(r.allow) > 0
@@ -620,6 +627,10 @@ func (s *Server) filterFishBaitSet(loc string, ids []string, keys []string, weig
 				continue
 			}
 			allowed := allowedFlags[j]
+			if userBaitOnly && !allowed {
+				// 用户饵料独占：不在 allow 名单的饵，直接跳过所有兜底档位。
+				continue
+			}
 			// 食性证据分级（specs/changes/bait-evidence-threshold）：rf4records 实测占比
 			// 优先，companion tier/evidence 兜底；四档放行。
 			share := -1.0
