@@ -889,6 +889,7 @@ type AdminCommand struct {
 	KVShape      int64               `json:"kv_shape,omitempty"`    // fish_tv_test：401.f4 模板 KV 形状或外层参数探测编号
 	AchID        int64               `json:"ach_id,omitempty"`      // achievement_push_test：成就 id
 	NotifyType   int64               `json:"notify_type,omitempty"` // achievement_push_test：2/9 的 306.f0 取值
+	ItemIDs      []string            `json:"item_ids,omitempty"`    // grant_reward_trophies：要发放的奖杯 item_id 列表
 }
 
 // StartAdminSubscriber 轮询共享 SQLite 队列，每 2 秒处理一批管理指令。
@@ -1214,9 +1215,20 @@ func (s *Server) execAdminCmd(cmd *AdminCommand) {
 		n := s.completeAllAchievementsForAdmin(cmd.UID)
 		s.log.Info("管理指令：一键完成所有成就", "uid", cmd.UID, "newly", n)
 	case "complete_all_qualifications":
-		// 后台玩家概况页「一键完成所有资格任务」：管理员专用，含活动分支、跳过缺口任务。
+		// 后台玩家概况页「一键完成所有资格任务」：管理员专用，仅永久分支 1~8，跳过缺口任务。
 		n := s.completeAllQualificationsForAdmin(cmd.UID)
 		s.log.Info("管理指令：一键完成所有资格任务", "uid", cmd.UID, "rules", n)
+	case "grant_reward_trophies":
+		// 后台玩家概况页「按需发放奖赏奖杯」：管理员选择 item_id 列表，按官方同型发到奖赏分组。
+		granted := 0
+		for _, itemID := range cmd.ItemIDs {
+			if s.adminGrantRewardTrophy(ctx, cmd.UID, itemID) { granted++ }
+		}
+		s.log.Info("管理指令：按需发放奖赏奖杯", "uid", cmd.UID, "requested", len(cmd.ItemIDs), "granted", granted)
+	case "grant_all_cards":
+		// 后台玩家概况页「一键发放所有卡牌」：category 78/82 全量，已拥有跳过。
+		cards, decks := s.grantAllTradingCardsForAdmin(cmd.UID)
+		s.log.Info("管理指令：一键发放所有卡牌", "uid", cmd.UID, "cards", cards, "decks", decks)
 	default:
 		s.log.Warn("未知管理指令", "op", cmd.Op)
 	}

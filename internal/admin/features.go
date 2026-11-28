@@ -743,3 +743,114 @@ func (s *Server) handleCompleteAllQualifications(w http.ResponseWriter, r *http.
 		strconv.FormatInt(req.UID, 10), "all")
 	writeJSON(w, map[string]any{"ok": true, "queued": true})
 }
+
+// handleRewardTrophyCatalog GET /api/reward-trophies
+// 奖赏面板 3/16 可发放的奖杯清单（category=72），按 item_id 稳定排序。
+func (s *Server) handleRewardTrophyCatalog(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.SQL.QueryContext(r.Context(), `
+		SELECT d.item_id, COALESCE(NULLIF(c.name_zh,''), NULLIF(c.name,''), d.item_id)
+		FROM item_def d LEFT JOIN item_catalog c ON c.item_id=d.item_id
+		WHERE d.category=72 ORDER BY d.item_id`)
+	if err != nil {
+		httpError(w, 500, err.Error())
+		return
+	}
+	defer rows.Close()
+	type trophy struct {
+		ItemID string `json:"item_id"`
+		Name   string `json:"name"`
+		Group  string `json:"group"`
+	}
+	list := make([]trophy, 0, 128)
+	for rows.Next() {
+		var t trophy
+		if err := rows.Scan(&t.ItemID, &t.Name); err != nil {
+			continue
+		}
+		t.Group = rewardTrophyGroup(t.ItemID)
+		list = append(list, t)
+	}
+	writeJSON(w, map[string]any{"items": list})
+}
+
+func rewardTrophyGroup(itemID string) string {
+	switch {
+	case strings.HasPrefix(itemID, "statuette_fisherman_"):
+		return "稀有鱼奖座"
+	case strings.HasPrefix(itemID, "statuette_supertrophy_"):
+		return "超级稀有鱼奖座"
+	case strings.HasPrefix(itemID, "trophy_level_"):
+		return "水域奖杯"
+	case strings.HasPrefix(itemID, "qual_"):
+		return "资格杯"
+	case strings.HasPrefix(itemID, "reward_bday"), strings.HasPrefix(itemID, "ny_20"),
+		strings.HasPrefix(itemID, "statuette_6years"), strings.HasPrefix(itemID, "statuette_mednoe"), strings.HasPrefix(itemID, "statuette_wf_port"):
+		return "周年与纪念"
+	case strings.HasPrefix(itemID, "statuette_cards_"):
+		return "集卡奖座"
+	case strings.HasPrefix(itemID, "ft_"), strings.HasPrefix(itemID, "ann_rec_"), strings.HasPrefix(itemID, "weekly_"):
+		return "赛事与周常"
+	default:
+		return "其它奖座"
+	}
+}
+
+// handleGrantRewardTrophies POST /api/players/reward-trophies
+// 管理员自选奖杯 item_id 列表，按官方同型发到玩家奖赏分组（3/16 可见）。
+func (s *Server) handleGrantRewardTrophies(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UID     int64    `json:"uid"`
+		ItemIDs []string `json:"item_ids"`
+	}
+	if err := readJSON(r, &req); err != nil || req.UID <= 0 || len(req.ItemIDs) == 0 {
+		httpError(w, 400, "参数错误")
+		return
+	}
+	// 校验：只接受 category=72 的奖赏物品，防止误发普通物品。
+	clean := make([]string, 0, len(req.ItemIDs))
+	seen := map[string]bool{}
+	for _, id := range req.ItemIDs {
+		if seen[id] { continue }
+		var cat int64
+		if err := s.db.SQL.QueryRowContext(r.Context(), `SELECT category FROM item_def WHERE item_id=?`, id).Scan(&cat); err != nil || cat != 72 {
+			continue
+		}
+		clean = append(clean, id)
+		seen[id] = true
+	}
+	if len(clean) == 0 {
+		httpError(w, 400, "没有有效的奖杯")
+		return
+	}
+	if err := s.db.QueuePush(r.Context(), mustJSON(map[string]any{
+		"op": "grant_reward_trophies", "uid": req.UID, "item_ids": clean,
+	})); err != nil {
+		httpError(w, 500, "写入发送队列失败: "+err.Error())
+		return
+	}
+	detail, _ := json.Marshal(clean)
+	_ = s.db.AuditLogWrite(r.Context(), adminOf(r), "grant_reward_trophies",
+		strconv.FormatInt(req.UID, 10), string(detail))
+	writeJSON(w, map[string]any{"ok": true, "queued": len(clean)})
+}
+
+// handleGrantAllCards POST /api/players/cards/grant-all
+// 一键发放所有卡牌与卡册（category 78/82），已拥有跳过。
+func (s *Server) handleGrantAllCards(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UID int64 `json:"uid"`
+	}
+	if err := readJSON(r, &req); err != nil || req.UID <= 0 {
+		httpError(w, 400, "参数错误")
+		return
+	}
+	if err := s.db.QueuePush(r.Context(), mustJSON(map[string]any{
+		"op": "grant_all_cards", "uid": req.UID,
+	})); err != nil {
+		httpError(w, 500, "写入发送队列失败: "+err.Error())
+		return
+	}
+	_ = s.db.AuditLogWrite(r.Context(), adminOf(r), "grant_all_cards",
+		strconv.FormatInt(req.UID, 10), "all")
+	writeJSON(w, map[string]any{"ok": true, "queued": true})
+}

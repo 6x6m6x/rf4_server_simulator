@@ -63,6 +63,11 @@ func (s *Server) completeAllQualificationsForAdmin(uid int64) int {
 	now := float64(time.Now().Unix())
 	done := 0
 	for _, r := range qualificationRules {
+		// 只做永久资格分支 1~qualificationBranches（手持/纺车/手竿/博洛尼亚/竞赛/飞德/鲤/海钓）。
+		// 分支 9~20 是新年/周年等活动任务，只在活动期间开放，一键完成不得把它们算进去。
+		if r.ID/1000 < 1 || r.ID/1000 > qualificationBranches {
+			continue
+		}
 		if eventGapRuleIDs[r.ID] {
 			continue // 缺口任务无判定信号，面板不下发，不能点亮
 		}

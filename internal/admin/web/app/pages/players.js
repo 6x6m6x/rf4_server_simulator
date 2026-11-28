@@ -235,16 +235,66 @@ function profile(p, reload, setDirty) {
   // 成就与资格：管理员专用的一键完成。走管理指令队列，约 2 秒生效。
   const progressSection = section({
     title: '成就与资格',
-    desc: '管理员专用：一键点亮该玩家的全部成就、完成全部资格任务（含活动分支）。仅改游戏进度，不发物品；资格完成会自动补发对应奖杯。约 2 秒生效，玩家无需重登。',
+    desc: '管理员专用：一键点亮该玩家的全部成就、完成全部资格任务。仅改游戏进度，不发物品；资格完成会自动补发对应奖杯。约 2 秒生效，玩家无需重登。',
     body: h('div', { class: 'row', style: { gap: '10px', flexWrap: 'wrap' } },
       btn('一键完成所有成就', async () => {
         if (!(await confirmDialog({ title: `点亮「${p.name}」的全部成就？`, desc: '会把 achievement_def 里所有成就标记为已完成并点亮图标（约 130 项）。此操作会记入后台操作日志。', confirm: '一键完成' }))) return;
         try { await post('/api/players/achievements/complete', { uid: p.uid }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
       }, 'primary sm', { icon: 'check' }),
       btn('一键完成所有资格任务', async () => {
-        if (!(await confirmDialog({ title: `完成「${p.name}」的全部资格任务？`, desc: '所有永久与活动资格分支的每一条任务都会补满进度并标记完成，同时自动补发对应分支奖杯。此操作会记入后台操作日志。', confirm: '一键完成' }))) return;
+        if (!(await confirmDialog({ title: `完成「${p.name}」的全部资格任务？`, desc: '仅 8 个永久资格分支（纺车/手竿/飞德/鲤/海钓等）的每一条任务会补满进度并标记完成，不含新年与周年活动任务；同时自动补发对应分支奖杯。此操作会记入后台操作日志。', confirm: '一键完成' }))) return;
         try { await post('/api/players/qualifications/complete', { uid: p.uid }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
       }, 'primary sm', { icon: 'check' })),
+  });
+  // 按需发放奖赏面板奖杯：普通「发物品」不会出现在奖赏面板 3/16，必须走专用发放。
+  const trophyChosen = new Set();
+  const trophySearch = h('input', { class: 'input', placeholder: '搜索奖杯名称或 ID，如 15条稀有鱼、statuette_', style: { flex: '1', minWidth: '220px' } });
+  const trophyList = h('div', { class: 'table-wrap', style: { maxHeight: '300px', overflow: 'auto', marginTop: '10px' } });
+  const trophyCount = h('span', { class: 'muted small' });
+  let trophyCache = [];
+  function drawTrophies() {
+    const q = trophySearch.value.trim().toLowerCase();
+    const list = trophyCache.filter((t) => !q || (t.name + ' ' + t.item_id).toLowerCase().includes(q));
+    trophyCount.textContent = `已选 ${trophyChosen.size} / 显示 ${list.length} 种`;
+    if (!list.length) { trophyList.replaceChildren(empty('没有匹配的奖杯', '换个关键词试试。')); return; }
+    let lastGroup = '';
+    const rows = [];
+    for (const t of list) {
+      if (t.group !== lastGroup) {
+        lastGroup = t.group;
+        rows.push(h('tr', {}, h('td', { colspan: 3, class: 'small muted', style: { paddingTop: '10px', fontWeight: '600' }, text: t.group })));
+      }
+      rows.push(h('tr', {},
+        h('td', { style: { width: '36px' } }, h('input', { type: 'checkbox', checked: trophyChosen.has(t.item_id), style: { width: '16px', height: '16px', accentColor: 'var(--accent)', cursor: 'pointer' }, onchange: (e) => { e.target.checked ? trophyChosen.add(t.item_id) : trophyChosen.delete(t.item_id); trophyCount.textContent = `已选 ${trophyChosen.size} / 显示 ${list.length} 种`; } })),
+        h('td', {}, h('div', { text: t.name || t.item_id })),
+        h('td', { class: 'mono muted small', text: t.item_id })));
+    }
+    trophyList.replaceChildren(h('table', { class: 'table' }, h('thead', {}, h('tr', {}, h('th', {}), h('th', { text: '奖杯' }), h('th', { text: '物品 ID' }))), h('tbody', {}, rows)));
+  }
+  trophySearch.addEventListener('input', debounce(drawTrophies, 200));
+  apiList('/api/reward-trophies').then((r) => { trophyCache = r.items || []; drawTrophies(); }).catch((e) => trophyList.replaceChildren(empty('奖杯清单读取失败', errText(e))));
+  const trophySection = section({
+    title: '按需发放奖赏奖杯',
+    desc: '奖赏面板（3/16）里的奖杯必须用专用通道发放才会显示——普通「发物品」只会进背包、面板看不到。勾选需要的奖杯后一键发放，已拥有的会自动跳过。',
+    actions: trophyCount,
+    body: h('div', { class: 'stack' },
+      h('div', { class: 'row', style: { gap: '8px' } }, trophySearch,
+        btn('发放选中', async () => {
+          const ids = [...trophyChosen];
+          if (!ids.length) { toast('请先勾选要发放的奖杯', 'bad'); return; }
+          if (!(await confirmDialog({ title: `给「${p.name}」发放 ${ids.length} 枚奖杯？`, desc: '已拥有的会自动跳过；发放后奖赏面板 3/16 立即显示。此操作会记入后台操作日志。', confirm: '发放' }))) return;
+          try { await post('/api/players/reward-trophies', { uid: p.uid, item_ids: ids }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
+        }, 'primary sm', { icon: 'plus' })),
+      trophyList),
+  });
+  // 一键发放所有卡牌（卡牌 + 卡册）。
+  const cardSection = section({
+    title: '一键发放所有卡牌',
+    desc: '把全部集换卡牌与卡册发到该玩家背包（已拥有的自动跳过）。卡牌会按鱼种自动填充卡面数据，发放后约 2 秒可在游戏里看到。',
+    body: h('div', {}, btn('发放所有卡牌与卡册', async () => {
+      if (!(await confirmDialog({ title: `给「${p.name}」发放所有卡牌？`, desc: '全部卡牌与卡册（约 280 种）逐个发放，已拥有的跳过。此操作会记入后台操作日志。', confirm: '全部发放' }))) return;
+      try { await post('/api/players/cards/grant-all', { uid: p.uid }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
+    }, 'primary sm', { icon: 'plus' })),
   });
   // 危险操作：彻底删除玩家。
   const dangerBlock = h('div', { style: { borderTop: '1px solid var(--line)', marginTop: '14px', paddingTop: '14px' } },
@@ -270,7 +320,7 @@ function profile(p, reload, setDirty) {
       form.row({ key: 'bank', label: '银行存款', kind: 'float', min: 0 }, cents(p.bank))),
     h('div', {},
       h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '8px 0 10px' }, text: '会员' }),
-      h('div', { class: 'stack' }, h('div', { class: 'row' }, seg, expWrap), h('div', { class: 'muted small', text: hhText }))), ipSection, saySection, progressSection, dangerBlock);
+      h('div', { class: 'stack' }, h('div', { class: 'row' }, seg, expWrap), h('div', { class: 'muted small', text: hhText }))), ipSection, saySection, progressSection, trophySection, cardSection, dangerBlock);
 }
 
 // ---------- 背包 ----------

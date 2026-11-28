@@ -49,7 +49,7 @@ func TestAdminCompleteAllQualifications(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	want := 0
 	for _, r := range qualificationRules {
-		if eventGapRuleIDs[r.ID] { continue }
+		if r.ID/1000 < 1 || r.ID/1000 > qualificationBranches || eventGapRuleIDs[r.ID] { continue }
 		want++
 		st := states[r.ID]
 		if st.CompletedTS <= 0 { t.Fatalf("资格规则 %d 未完成", r.ID) }
@@ -57,7 +57,14 @@ func TestAdminCompleteAllQualifications(t *testing.T) {
 			t.Fatalf("资格规则 %d 计数不满: %d", r.ID, len(st.Counted))
 		}
 	}
-	if n != want { t.Fatalf("完成规则数 %d，期望 %d", n, want) }
+	if n != want { t.Fatalf("完成规则数 %d，期望 %d（仅永久分支）", n, want) }
+	// 活动分支（新年/周年）不得被完成。
+	for _, r := range qualificationRules {
+		if r.ID/1000 <= qualificationBranches { continue }
+		if st := states[r.ID]; st.CompletedTS > 0 {
+			t.Fatalf("活动分支规则 %d 不应被一键完成", r.ID)
+		}
+	}
 	if n2 := srv.completeAllQualificationsForAdmin(uid); n2 != want {
 		t.Fatalf("重复执行应仍为 %d（奖杯不重发），实得 %d", want, n2)
 	}
