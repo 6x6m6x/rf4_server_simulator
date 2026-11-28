@@ -603,6 +603,9 @@ func hDynamicRewardEntry(ctx *Ctx) ([]byte, bool) {
 					ctx.Log.Error("3/40 奖赏可见性写库失败", "guid", shortGUID(guid), "err", err)
 					return nil, false
 				}
+				// ★即时生效：推 4/22 奖赏增量（含更新后的 f1 可见性），
+				// 客户端无需退出重进即可在奖赏面板刷新隐藏状态。
+				srv.pushAwardUpdate(row.UID, row)
 			}
 			// 与 3/16 共用构造器：工艺/耐久/时间一律取物品行的真实值。
 			obj, merr := makeRewardEntry(row)

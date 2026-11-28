@@ -869,6 +869,28 @@ func (s *Server) handleGrantAllCards(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "queued": true})
 }
 
+// handleSetQualTitle POST /api/players/qual-title
+// 设置玩家展示的绿字称号（资格分支ID；0=自动选最高）。经管理队列写 gameserver 的 kv。
+func (s *Server) handleSetQualTitle(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UID    int64 `json:"uid"`
+		Branch int64 `json:"branch"`
+	}
+	if err := readJSON(r, &req); err != nil || req.UID <= 0 || req.Branch < 0 {
+		httpError(w, 400, "参数错误")
+		return
+	}
+	if err := s.db.QueuePush(r.Context(), mustJSON(map[string]any{
+		"op": "set_qual_title", "uid": req.UID, "branch": req.Branch,
+	})); err != nil {
+		httpError(w, 500, "写入发送队列失败: "+err.Error())
+		return
+	}
+	_ = s.db.AuditLogWrite(r.Context(), adminOf(r), "set_qual_title",
+		strconv.FormatInt(req.UID, 10), strconv.FormatInt(req.Branch, 10))
+	writeJSON(w, map[string]any{"ok": true, "queued": true})
+}
+
 // handleCleanupInvalidCards POST /api/players/cards/cleanup-invalid
 // 清理定义损坏的卡牌（俄文占位名/无价格卖不掉）。uid<=0 表示全服。
 func (s *Server) handleCleanupInvalidCards(w http.ResponseWriter, r *http.Request) {

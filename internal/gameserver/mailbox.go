@@ -890,6 +890,7 @@ type AdminCommand struct {
 	AchID        int64               `json:"ach_id,omitempty"`      // achievement_push_test：成就 id
 	NotifyType   int64               `json:"notify_type,omitempty"` // achievement_push_test：2/9 的 306.f0 取值
 	ItemIDs      []string            `json:"item_ids,omitempty"`    // grant_reward_trophies：要发放的奖杯 item_id 列表
+	Branch       int64               `json:"branch,omitempty"`      // set_qual_title：展示称号的资格分支ID（0=自动）
 }
 
 // StartAdminSubscriber 轮询共享 SQLite 队列，每 2 秒处理一批管理指令。
@@ -1233,6 +1234,13 @@ func (s *Server) execAdminCmd(cmd *AdminCommand) {
 		// 清理定义损坏的卡牌（俄文占位名/无价格卖不掉）；uid<=0=全服。
 		deleted := s.cleanupInvalidCardsForAdmin(cmd.UID)
 		s.log.Info("管理指令：清理损坏卡牌", "uid", cmd.UID, "deleted", deleted)
+	case "set_qual_title":
+		// 固定玩家展示的绿字称号（资格分支）；0=自动选最高资格。
+		if err := s.setQualTitle(ctx, cmd.UID, cmd.Branch); err != nil {
+			s.log.Warn("管理指令：设置展示称号失败", "uid", cmd.UID, "branch", cmd.Branch, "err", err)
+		} else {
+			s.log.Info("管理指令：设置展示称号", "uid", cmd.UID, "branch", cmd.Branch)
+		}
 	default:
 		s.log.Warn("未知管理指令", "op", cmd.Op)
 	}

@@ -275,6 +275,10 @@ func hSocialUserCard(ctx *Ctx) ([]byte, bool) {
 	role := int64(0)
 	region := int64(0)
 	trophies := int64(0)
+	// ★f8=pfcgjmifmnd(qual) 是昵称下方绿字称号：(资格分支<<16)|等级。
+	// 官服抓包 24/19 实包 f8=0x40007/0x60002 等；服务端此前恒填 0，
+	// 别人资料卡看不到绿字。按玩家已通过资格+其选择计算。
+	qualTitle := uint32(0)
 	if ctx.Sess.Srv != nil && ctx.Sess.Srv.DB != nil {
 		var err error
 		p, err = ctx.Sess.Srv.DB.GetProfile(ctx.Sess.Srv.dbCtx(), uid)
@@ -292,6 +296,7 @@ func hSocialUserCard(ctx *Ctx) ([]byte, bool) {
 			if n, err := ctx.Sess.Srv.DB.RareSpeciesCount(ctx.Sess.Srv.dbCtx(), uid, 3); err == nil {
 				trophies = n
 			}
+			qualTitle = ctx.Sess.Srv.currentQualTitle(ctx.Sess.Srv.dbCtx(), uid)
 		}
 	}
 	// f6 是「在线（online）」字段：客户端据此点亮/熄灭联系人列表里的在线灯。
@@ -309,7 +314,7 @@ func hSocialUserCard(ctx *Ctx) ([]byte, bool) {
 		5: proto.U32(uint32(trophies)),
 		6: proto.U32(uint32(online)),
 		7: proto.U32(uint32(region)),
-		8: proto.U32(0),
+		8: proto.U32(qualTitle), // 绿字称号 (资格分支<<16)|等级，官服实包口径
 	})
 	outer, err := bytesWrappedObject(inner, ctx.Sess.Table())
 	if err != nil {

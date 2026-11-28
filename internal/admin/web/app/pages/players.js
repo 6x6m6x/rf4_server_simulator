@@ -233,18 +233,30 @@ function profile(p, reload, setDirty) {
       }, 'primary sm', { icon: 'mail' }))),
   });
   // 成就与资格：管理员专用的一键完成。走管理指令队列，约 2 秒生效。
+  const qualBranchNames = ['自动（最高等级）', '纺车竿', '汲钩(jigging)', '轻渔具', '手竿', '博洛尼亚/赛竿', '飞德竿', '鲤鱼', '海洋钓鱼'];
+  const qualTitleSel = h('select', { class: 'select', style: { minWidth: '200px' } },
+    ...qualBranchNames.map((nm, i) => h('option', { value: String(i), text: nm })));
   const progressSection = section({
     title: '成就与资格',
-    desc: '管理员专用：一键点亮该玩家的全部成就、完成全部资格任务。仅改游戏进度，不发物品；资格完成会自动补发对应奖杯。约 2 秒生效，玩家无需重登。',
-    body: h('div', { class: 'row', style: { gap: '10px', flexWrap: 'wrap' } },
-      btn('一键完成所有成就', async () => {
-        if (!(await confirmDialog({ title: `点亮「${p.name}」的全部成就？`, desc: '会把 achievement_def 里所有成就标记为已完成并点亮图标（约 130 项）。此操作会记入后台操作日志。', confirm: '一键完成' }))) return;
-        try { await post('/api/players/achievements/complete', { uid: p.uid }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
-      }, 'primary sm', { icon: 'check' }),
-      btn('一键完成所有资格任务', async () => {
-        if (!(await confirmDialog({ title: `完成「${p.name}」的全部资格任务？`, desc: '仅 8 个永久资格分支（纺车/手竿/飞德/鲤/海钓等）的每一条任务会补满进度并标记完成，不含新年与周年活动任务；同时自动补发对应分支奖杯。此操作会记入后台操作日志。', confirm: '一键完成' }))) return;
-        try { await post('/api/players/qualifications/complete', { uid: p.uid }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
-      }, 'primary sm', { icon: 'check' })),
+    desc: '管理员专用：一键点亮全部成就、完成全部资格任务；并指定该玩家对外展示的称号（昵称下方绿字「N级XX高手」）。仅改游戏进度与展示选择，不发物品；资格完成会自动补发对应奖杯。约 2 秒生效，玩家无需重登。',
+    body: h('div', { class: 'stack' },
+      h('div', { class: 'row', style: { gap: '10px', flexWrap: 'wrap' } },
+        btn('一键完成所有成就', async () => {
+          if (!(await confirmDialog({ title: `点亮「${p.name}」的全部成就？`, desc: '会把 achievement_def 里所有成就标记为已完成并点亮图标（约 130 项）。此操作会记入后台操作日志。', confirm: '一键完成' }))) return;
+          try { await post('/api/players/achievements/complete', { uid: p.uid }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
+        }, 'primary sm', { icon: 'check' }),
+        btn('一键完成所有资格任务', async () => {
+          if (!(await confirmDialog({ title: `完成「${p.name}」的全部资格任务？`, desc: '仅 8 个永久资格分支（纺车/手竿/飞德/鲤/海钓等）的每一条任务会补满进度并标记完成，不含新年与周年活动任务；同时自动补发对应分支奖杯。此操作会记入后台操作日志。', confirm: '一键完成' }))) return;
+          try { await post('/api/players/qualifications/complete', { uid: p.uid }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
+        }, 'primary sm', { icon: 'check' })),
+      h('div', { class: 'row', style: { gap: '10px', alignItems: 'center', flexWrap: 'wrap' } },
+        h('span', { class: 'muted small', text: '对外展示称号：' }), qualTitleSel,
+        btn('设置称号', async () => {
+          const branch = +qualTitleSel.value;
+          const nm = qualBranchNames[branch];
+          if (!(await confirmDialog({ title: `把「${p.name}」的展示称号设为「${nm}」？`, desc: branch === 0 ? '恢复自动：按该玩家已通过资格里等级最高的分支显示。' : '设为指定分支后，其他玩家打开其资料卡即可看到对应的绿字称号；玩家无需重登。此操作会记入后台操作日志。', confirm: '设置' }))) return;
+          try { await post('/api/players/qual-title', { uid: p.uid, branch }); toast('已提交，约 2 秒后生效'); } catch (e) { toast(errText(e), 'bad'); }
+        }, 'sm', { icon: 'check' }))),
   });
   // 按需发放奖赏面板奖杯：普通「发物品」不会出现在奖赏面板 3/16，必须走专用发放。
   const trophyChosen = new Set();
